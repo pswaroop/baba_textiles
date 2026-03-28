@@ -1,0 +1,1407 @@
+<!-- <!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+
+<style>
+
+body{
+font-family: Arial;
+font-size: 12px;
+}
+
+.header{
+display:flex;
+justify-content:space-between;
+margin-bottom:20px;
+}
+
+.logo{
+font-size:20px;
+font-weight:bold;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:20px;
+}
+
+th,td{
+border:1px solid #ddd;
+padding:8px;
+text-align:left;
+}
+
+th{
+background:#f3f3f3;
+}
+
+.total{
+text-align:right;
+margin-top:20px;
+font-size:14px;
+font-weight:bold;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+<div>
+
+<h2>Baba Textiles</h2>
+<p>GSTIN: 37XXXXXXXXXXX</p>
+<p>Andhra Pradesh, India</p>
+
+</div>
+
+<div>
+
+<p><strong>Invoice:</strong> {{ order.order_number }}</p>
+<p><strong>Date:</strong> {{ order.created_at }}</p>
+
+</div>
+
+</div>
+
+<hr>
+
+<h3>Bill To</h3>
+
+<p>{{ order.customer_name }}</p>
+
+<table>
+
+<thead>
+
+<tr>
+<th>Item</th>
+<th>Qty</th>
+<th>Price</th>
+<th>Total</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+{% for item in order.items.all %}
+
+<tr>
+
+<td>{{ item.variant.product.name }}</td>
+<td>{{ item.quantity }}</td>
+<td>₹{{ item.variant.product.price }}</td>
+<td>₹{{ item.variant.product.price|floatformat:2 }}</td>
+
+</tr>
+
+{% endfor %}
+
+</tbody>
+
+</table>
+
+<div class="total">
+
+Total Amount : ₹ {{ order.total_amount }}
+
+</div>
+
+</body>
+</html> -->
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.4;
+        }
+        .header-table {
+            width: 100%;
+            border: none;
+            margin-bottom: 20px;
+        }
+        .header-table td {
+            border: none;
+            vertical-align: top;
+            padding: 0;
+        }
+        .logo {
+            font-size: 22px;
+            font-weight: bold;
+            color: #0f766e; /* Baba Textiles Teal */
+            margin: 0;
+        }
+        .invoice-info {
+            text-align: right;
+        }
+        hr {
+            border: 0;
+            border-top: 1px solid #ccc;
+            margin: 20px 0;
+        }
+        .bill-to {
+            margin-bottom: 30px;
+        }
+        .bill-to h3 {
+            margin-bottom: 5px;
+            color: #0f766e;
+            text-transform: uppercase;
+            font-size: 14px;
+        }
+        table.items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table.items-table th, table.items-table td {
+            border: 1px solid #eee;
+            padding: 10px;
+            text-align: left;
+        }
+        table.items-table th {
+            background: #f9f9f9;
+            font-weight: bold;
+        }
+        .total {
+            text-align: right;
+            margin-top: 30px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <table class="header-table">
+        <tr>
+            <td>
+                <h1 class="logo">Baba Textiles</h1>
+                <p>GSTIN: 37XXXXXXXXXXX<br>
+                Andhra Pradesh, India</p>
+            </td>
+            <td class="invoice-info">
+                <p><strong>Invoice #:</strong> {{ order.order_number }}<br>
+                <strong>Date:</strong> {{ order.created_at|date:"F d, Y" }}</p>
+            </td>
+        </tr>
+    </table>
+
+    <hr>
+
+    <div class="bill-to">
+        <h3>Bill To</h3>
+        <strong>{{ order.customer_name }}</strong><br>
+        
+        {% if order.address %}
+            {{ order.address }}<br>
+            {{ order.city }}, {{ order.state }} - {{ order.pincode }}<br>
+        {% endif %}
+        
+        {% if order.phone %}
+            <strong>Phone:</strong> {{ order.phone }}
+        {% endif %}
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th>Item Description</th>
+                <th>Qty</th>
+                <th>Unit Price</th>
+                <th>Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr>
+                <td>{{ item.variant.product.name }} ({{ item.variant.color }} / {{ item.variant.size }})</td>
+                <td>{{ item.quantity }}</td>
+                <td>₹{{ item.variant.product.price }}</td>
+                <td>₹{% widthratio item.variant.product.price 1 item.quantity %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="total">
+        Grand Total: ₹{{ order.total_amount }}
+    </div>
+
+    <div style="margin-top: 50px; font-size: 10px; color: #999; text-align: center;">
+        This is a computer-generated invoice for Baba Textiles wholesale orders.
+    </div>
+
+</body>
+</html>
+<!DOCTYPE html> -->
+<!-- <html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+            size: 80mm 297mm; /* Standard thermal paper size */
+            margin: 2mm;
+        }
+        body {
+            font-family: 'Courier New', Courier, monospace; /* Classic receipt font */
+            font-size: 11px;
+            width: 76mm;
+            margin: 0 auto;
+            color: #000;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        
+        .header { margin-bottom: 5px; }
+        .header h2 { margin: 0; font-size: 16px; }
+        
+        .divider { border-top: 1px dashed #000; margin: 5px 0; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; border-bottom: 1px dashed #000; padding: 2px 0; }
+        td { padding: 2px 0; vertical-align: top; }
+
+        .gst-row td {
+            font-size: 9px;
+            padding-bottom: 4px;
+        }
+
+        .summary-table td { padding: 1px 0; }
+        .tax-summary {
+            margin-top: 10px;
+            border: 1px solid #000;
+            font-size: 10px;
+        }
+        .tax-summary th, .tax-summary td {
+            border: 1px solid #000;
+            text-align: center;
+            padding: 2px;
+        }
+        .footer-notes {
+            margin-top: 10px;
+            font-size: 9px;
+            line-height: 1.2;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header text-center">
+        <h2>BABA TEXTILES</h2>
+        <p>GT ROAD, SRIKAKULAM</p>
+        <p>Phone : 8328596985</p>
+        <p class="bold">GSTIN : 37BBOPT4548Q1ZG</p>
+        <div class="divider"></div>
+        <p class="bold" style="font-size: 14px; margin: 5px 0;">TAX INVOICE</p>
+    </div>
+
+    <table class="info-table">
+        <tr>
+            <td>Invoice No/Date:</td>
+            <td class="text-right">{{ order.order_number }} / {{ order.created_at|date:"d-m-Y" }}</td>
+        </tr>
+        <tr>
+            <td>Customer Name:</td>
+            <td class="text-right">{{ order.customer_name|default:"Cash" }}</td>
+        </tr>
+        <tr>
+            <td>Cust Mobile No:</td>
+            <td class="text-right">{{ order.phone|default:"--" }}</td>
+        </tr>
+    </table>
+
+    <div class="divider"></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th width="10%">SI</th>
+                <th width="45%">Product</th>
+                <th width="15%">Price</th>
+                <th width="15%">Disc(%)</th>
+                <th width="15%" class="text-right">Amt.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="bold">{{ item.variant.product.name|upper }}</td>
+                <td>{{ item.variant.product.price }}</td>
+                <td>--</td>
+                <td class="text-right">{% widthratio item.variant.product.price 1 item.quantity %}.00</td>
+            </tr>
+            <tr class="gst-row">
+                <td></td>
+                <td colspan="4">
+                    Qty: {{ item.quantity }}.00 &nbsp; 
+                    HSN: {{ item.variant.product.hsn_code|default:"620449" }} &nbsp; 
+                    GST %: 5% &nbsp; 
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="divider"></div>
+
+    <table class="summary-table">
+        <tr>
+            <td class="text-right">Total:</td>
+            <td class="text-right bold">{{ order.total_amount }}</td>
+        </tr>
+        <tr>
+            <td class="text-right">Add : Freight & Forw:</td>
+            <td class="text-right">0.00</td>
+        </tr>
+        <tr style="border-top: 1px solid #000;">
+            <td class="text-right bold">Net Amount:</td>
+            <td class="text-right bold">{{ order.total_amount }}</td>
+        </tr>
+    </table>
+
+    <table class="tax-summary">
+        <thead>
+            <tr>
+                <th>Tax Rate</th>
+                <th>Taxable Amt.</th>
+                <th>CGST Amt.</th>
+                <th>SGST Amt.</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>5%</td>
+                <td>{{ order.total_amount }}</td>
+                <td>--</td>
+                <td>--</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="footer-notes">
+        <p>* NO EXCHANGE WITHOUT BARCODE AND BILL</p>
+        <p>* EXCHANGE WITHIN 7 DAYS ONLY.</p>
+        <p>* EXCHANGE TIMINGS 12:00 Pm to 04:00 pm</p>
+        <p>* ONCE STITCHED NOT EXCHANGEABLE</p>
+        <p>* MONEY NOT REFUNDABLE</p>
+        <p>* INNERWEAR ITEMS ARE NOT EXCHANGEABLE</p>
+    </div>
+
+    <div class="text-center" style="margin-top: 10px;">
+        <p>--- Thank You Visit Again ---</p>
+    </div>
+
+</body>
+</html> -->
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+            size: 80mm auto; /* 3-inch width, auto height */
+            margin: 3mm;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            color: #333;
+            line-height: 1.4;
+            width: 74mm; /* Adjusted for margins */
+            margin: 0 auto;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        
+        /* Branding Colors */
+        .teal-text { color: #0f766e; }
+        
+        .header { margin-bottom: 10px; }
+        .logo { font-size: 18px; font-weight: bold; margin: 0; }
+        
+        hr {
+            border: 0;
+            border-top: 1px dashed #ccc;
+            margin: 10px 0;
+        }
+
+        .info-table, .items-table, .summary-table, .tax-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        .bill-to-section {
+            margin-bottom: 15px;
+            padding: 5px;
+            background-color: #f9fbfb;
+            border: 1px solid #e2e8e8;
+        }
+
+        /* Items Table Styling */
+        .items-table th {
+            border-bottom: 1px solid #0f766e;
+            text-align: left;
+            padding-bottom: 5px;
+            font-size: 10px;
+            color: #0f766e;
+        }
+        .items-table td {
+            padding: 5px 0;
+            vertical-align: top;
+        }
+        .gst-detail {
+            font-size: 9px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        /* Tax Summary Table */
+        .tax-table {
+            border: 1px solid #eee;
+            margin-top: 10px;
+        }
+        .tax-table th, .tax-table td {
+            border: 1px solid #eee;
+            font-size: 9px;
+            text-align: center;
+            padding: 4px;
+        }
+        .tax-table th { background-color: #f9f9f9; }
+
+        .grand-total {
+            font-size: 14px;
+            border-top: 2px solid #0f766e;
+            padding-top: 5px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header text-center">
+        <h1 class="logo teal-text">Baba Textiles</h1>
+        <p style="margin: 2px 0;">GSTIN: 37XXXXXXXXXXX</p>
+        <p style="margin: 2px 0;">Andhra Pradesh, India</p>
+    </div>
+
+    <hr>
+
+    <table class="info-table">
+        <tr>
+            <td class="bold">Invoice:</td>
+            <td class="text-right">{{ order.order_number }}</td>
+        </tr>
+        <tr>
+            <td class="bold">Date:</td>
+            <td class="text-right">{{ order.created_at|date:"F d, Y" }}</td>
+        </tr>
+    </table>
+
+    <div class="bill-to-section">
+        <div class="bold teal-text" style="font-size: 10px; margin-bottom: 3px;">BILL TO:</div>
+        <div class="bold">{{ order.customer_name }}</div>
+        {% if order.address %}
+            <div>{{ order.address }}</div>
+            <div>{{ order.city }}, {{ order.state }} - {{ order.pincode }}</div>
+        {% endif %}
+        {% if order.phone %}
+            <div>Ph: {{ order.phone }}</div>
+        {% endif %}
+    </div>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th>Item Description</th>
+                <th class="text-right">Qty</th>
+                <th class="text-right">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr>
+                <td>
+                    <div class="bold">{{ item.variant.product.name }}</div>
+                    <div class="gst-detail">
+                        HSN: {{ item.variant.product.hsn_code|default:"6204" }} | GST: 5%
+                    </div>
+                </td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right bold">₹{% widthratio item.variant.product.price 1 item.quantity %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <table class="summary-table">
+        <tr>
+            <td class="text-right">Subtotal:</td>
+            <td class="text-right">₹{{ order.total_amount }}</td>
+        </tr>
+        <tr>
+            <td class="text-right">Shipping:</td>
+            <td class="text-right">₹0.00</td>
+        </tr>
+        <tr class="grand-total teal-text bold">
+            <td class="text-right" style="font-size: 12px;">Grand Total:</td>
+            <td class="text-right" style="font-size: 14px;">₹{{ order.total_amount }}</td>
+        </tr>
+    </table>
+
+    <div class="bold teal-text" style="margin-top: 15px; font-size: 10px;">GST TAX SUMMARY</div>
+    <table class="tax-table">
+        <thead>
+            <tr>
+                <th>Rate</th>
+                <th>Taxable</th>
+                <th>CGST</th>
+                <th>SGST</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>5%</td>
+                <td>₹{{ order.total_amount }}</td>
+                <td>--</td>
+                <td>--</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="text-center" style="margin-top: 30px; border-top: 1px solid #eee; pt: 10px;">
+        <p class="teal-text bold">Thank you for shopping with Baba Textiles!</p>
+        <p style="font-size: 9px; color: #999;">This is a computer-generated invoice.</p>
+    </div>
+
+</body>
+</html> -->
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+            size: 80mm auto;
+            margin: 3mm;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            color: #000;
+            width: 74mm;
+            margin: 0 auto;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        .teal { color: #0f766e; }
+        
+        .header { margin-bottom: 5px; }
+        .logo { font-size: 18px; margin: 0; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        .items-th { border-bottom: 1px solid #000; font-size: 10px; padding-bottom: 4px; }
+        .item-row td { padding: 5px 0; vertical-align: top; }
+        
+        .tax-table { margin-top: 10px; border: 1px solid #000; }
+        .tax-table th, .tax-table td {
+            border: 1px solid #000;
+            font-size: 9px;
+            text-align: center;
+            padding: 3px;
+        }
+        .tax-table th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    {% for order in orders %}
+    <div class="header text-center">
+        <h1 class="logo teal">Baba Textiles</h1>
+        <p style="margin: 2px 0;">GT ROAD, SRIKAKULAM</p>
+        <p style="margin: 2px 0;" class="bold">GSTIN: 37BBOPT4548Q1ZG</p>
+        <div class="divider"></div>
+        <p class="bold teal" style="font-size: 13px; margin: 5px 0;">TAX INVOICE</p>
+    </div>
+
+    <table>
+        <tr>
+            <td>Inv No: {{ order.order_number }}</td>
+            <td class="text-right">Date: {{ order.created_at|date:"d-m-Y" }}</td>
+        </tr>
+    </table>
+
+    <div style="margin: 10px 0; padding: 5px; border: 1px solid #eee;">
+        <div class="bold teal" style="font-size: 9px;">BILL TO:</div>
+        <div class="bold">{{ order.customer_name|upper }}</div>
+        {% if order.address %}{{ order.address }}, {{ order.city }}{% endif %}
+        {% if order.phone %}<br>Ph: {{ order.phone }}{% endif %}
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th class="items-th teal">Description</th>
+                <th class="items-th teal text-right">Qty</th>
+                <th class="items-th teal text-right">Amt</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr class="item-row">
+                <td>
+                    <div class="bold">{{ item.variant.product.name|upper }}</div>
+                    <div style="font-size: 9px; color: #555;">HSN: 6204 | GST: 5%</div>
+                </td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right bold">₹{% widthratio item.variant.product.price 1 item.quantity %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="divider"></div>
+
+    <table style="font-size: 12px;">
+        <tr>
+            <td class="text-right">Taxable Value:</td>
+            <td class="text-right">₹{{ order.taxable_amount }}</td>
+        </tr>
+        <tr class="teal bold">
+            <td class="text-right" style="font-size: 13px;">Grand Total:</td>
+            <td class="text-right" style="font-size: 15px;">₹{{ order.total_amount }}</td>
+        </tr>
+    </table>
+
+    <div class="bold teal" style="margin-top: 10px; font-size: 9px;">GST BREAKUP</div>
+    <table class="tax-table">
+        <thead>
+            <tr>
+                <th>Taxable</th>
+                <th>CGST (2.5%)</th>
+                <th>SGST (2.5%)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>₹{{ order.taxable_amount }}</td>
+                <td>₹{{ order.cgst }}</td>
+                <td>₹{{ order.sgst }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="text-center" style="margin-top: 25px;">
+        <p class="bold teal">Thank You for Shopping!</p>
+        <p style="font-size: 8px; color: #999;">Computer Generated Invoice</p>
+    </div>
+
+    {% if not forloop.last %}
+        <div style="page-break-after: always;"></div>
+    {% endif %}
+    {% endfor %}
+</body>
+</html> -->
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page {
+    size: 80mm;
+    margin: 0;
+}
+        body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    width: 80mm;
+    margin: 0;       /* important */
+    padding: 2mm;    /* small padding so text doesn't cut */
+    color: #000;
+    background: #fff;
+}
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        
+        .header { padding: 5px 0; }
+        .logo { font-size: 18px; text-transform: uppercase; margin: 0; }
+        
+        /* Dashed lines look better on thermal printers than solid teal blocks */
+        .divider { border-top: 1px dashed #000; margin: 5px 0; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
+        th { text-align: left; border-bottom: 1px solid #000; padding: 2px 0; font-size: 11px; }
+        td { padding: 3px 0; vertical-align: top; }
+
+        .bill-to {
+            border: 1px solid #000;
+            padding: 5px;
+            margin: 5px 0;
+            font-size: 11px;
+        }
+
+        .tax-table {
+            margin-top: 10px;
+            border: 1px solid #000;
+        }
+        .tax-table th, .tax-table td {
+            border: 1px solid #000;
+            font-size: 10px;
+            text-align: center;
+            padding: 2px;
+        }
+
+        .grand-total {
+            font-size: 14px;
+            border-top: 1px double #000;
+            padding-top: 4px;
+        }
+        .order-slip{
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+    </style>
+</head>
+<body>
+    {% for order in orders %}
+    <div class="header text-center">
+        <h1 class="logo">BABA TEXTILES</h1>
+        <p style="margin: 2px 0;">GT ROAD, SRIKAKULAM</p>
+        <p style="margin: 2px 0;">Phone: 8328596985</p>
+        <p class="bold">GSTIN: 37BBOPT4548Q1ZG</p>
+        <div class="divider"></div>
+        <p class="bold" style="font-size: 14px; margin: 2px 0;">TAX INVOICE</p>
+    </div>
+
+    <table style="font-size: 11px;">
+        <tr>
+            <td>INV: {{ order.order_number }}</td>
+            <td class="text-right">DATE: {{ order.created_at|date:"d/m/Y" }}</td>
+        </tr>
+    </table>
+
+    <div class="bill-to">
+        <div class="bold">BILL TO:</div>
+        <div>{{ order.customer_name|upper }}</div>
+        {% if order.address %}
+            <div>{{ order.address }}, {{ order.city }}</div>
+            <div>{{ order.state }} - {{ order.pincode }}</div>
+        {% endif %}
+        {% if order.phone %}<div>PH: {{ order.phone }}</div>{% endif %}
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>DESCRIPTION</th>
+                <th class="text-right">QTY</th>
+                <th class="text-right">AMT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items.all %}
+            <tr>
+                <td>
+                    <div class="bold">{{ item.variant.product.name|upper }}</div>
+                    <div style="font-size: 10px;">HSN: 6204 | GST: 5%</div>
+                </td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right bold">₹{% widthratio item.variant.product.price 1 item.quantity %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="divider"></div>
+
+    <table>
+        <tr>
+            <td class="text-right">Taxable Value:</td>
+            <td class="text-right">₹{{ order.taxable_amount }}</td>
+        </tr>
+        <tr class="grand-total bold">
+            <td class="text-right">GRAND TOTAL:</td>
+            <td class="text-right">₹{{ order.total_amount }}</td>
+        </tr>
+    </table>
+
+    <div class="bold" style="margin-top: 8px; font-size: 10px;">GST BREAKUP</div>
+    <table class="tax-table">
+        <thead>
+            <tr>
+                <th>RATE</th>
+                <th>TAXABLE</th>
+                <th>CGST (2.5%)</th>
+                <th>SGST (2.5%)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>5%</td>
+                <td>{{ order.taxable_amount }}</td>
+                <td>{{ order.cgst }}</td>
+                <td>{{ order.sgst }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="text-center" style="margin-top: 20px;">
+        <p class="bold">THANK YOU VISIT AGAIN!</p>
+        <p style="font-size: 9px;">Computer Generated Receipt</p>
+    </div>
+
+    {% if not forloop.last %}
+        <div style="page-break-after: always; border-top: 2px dashed #000; margin-top: 10px;"></div>
+    {% endif %}
+    {% if not forloop.last %}
+<div style="page-break-after: always;"></div>
+{% endif %}
+    {% endfor %}
+</body>
+</html> -->
+<!-- <!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+
+<style>
+
+@page{
+    size:80mm auto;
+    margin:0;
+}
+
+body{
+    font-family:'Courier New', Courier, monospace;
+    font-size:12px;
+    width:78mm;
+    margin:0;
+    padding:2mm;
+    color:#000;
+    background:#fff;
+}
+
+/* alignment helpers */
+
+.text-center{ text-align:center; }
+.text-right{ text-align:right; }
+.bold{ font-weight:bold; }
+
+/* prevent bill breaking */
+
+.order-slip{
+    page-break-inside:avoid;
+    break-inside:avoid;
+}
+
+/* header */
+
+.header{ padding:5px 0; }
+
+.logo{
+    font-size:18px;
+    text-transform:uppercase;
+    margin:0;
+}
+
+/* divider */
+
+.divider{
+    border-top:1px dashed #000;
+    margin:5px 0;
+}
+
+/* tables */
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-bottom:5px;
+}
+
+th{
+    text-align:left;
+    border-bottom:1px solid #000;
+    padding:2px 0;
+    font-size:11px;
+}
+
+td{
+    padding:3px 0;
+    vertical-align:top;
+}
+
+/* billing box */
+
+.bill-to{
+    border:1px solid #000;
+    padding:5px;
+    margin:5px 0;
+    font-size:11px;
+}
+
+/* gst table */
+
+.tax-table{
+    margin-top:10px;
+    border:1px solid #000;
+}
+
+.tax-table th,
+.tax-table td{
+    border:1px solid #000;
+    font-size:10px;
+    text-align:center;
+    padding:2px;
+}
+
+.grand-total{
+    font-size:14px;
+    border-top:1px double #000;
+    padding-top:4px;
+}
+
+/* avoid table breaks */
+
+table, tr, td{
+    page-break-inside:avoid;
+}
+.order-page{
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+</style>
+</head>
+
+
+<body>
+
+{% for order in orders %}
+<div class="order-page">
+<div class="order-slip">
+
+<div class="header text-center">
+
+<h1 class="logo">BABA TEXTILES</h1>
+
+<p style="margin:2px 0;">GT ROAD, SRIKAKULAM</p>
+
+<p style="margin:2px 0;">Phone: 8328596985</p>
+
+<p class="bold">GSTIN: 37BBOPT4548Q1ZG</p>
+
+<div class="divider"></div>
+
+<p class="bold" style="font-size:14px;margin:2px 0;">
+TAX INVOICE
+</p>
+
+</div>
+
+
+<table style="font-size:11px">
+
+<tr>
+
+<td>INV: {{ order.order_number }}</td>
+
+<td class="text-right">
+DATE: {{ order.created_at|date:"d/m/Y" }}
+</td>
+
+</tr>
+
+</table>
+
+
+<div class="bill-to">
+
+<div class="bold">BILL TO:</div>
+
+<div>{{ order.customer_name|upper }}</div>
+
+{% if order.address %}
+<div>{{ order.address }}, {{ order.city }}</div>
+<div>{{ order.state }} - {{ order.pincode }}</div>
+{% endif %}
+
+{% if order.phone %}
+<div>PH: {{ order.phone }}</div>
+{% endif %}
+
+</div>
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>DESCRIPTION</th>
+<th class="text-right">QTY</th>
+<th class="text-right">AMT</th>
+
+</tr>
+
+</thead>
+
+
+<tbody>
+
+{% for item in order.items.all %}
+
+<tr>
+
+<td>
+
+<div class="bold">
+{{ item.variant.product.name|upper }}
+</div>
+
+<div style="font-size:10px">
+HSN: 6204 | GST: 5%
+</div>
+
+</td>
+
+<td class="text-right">
+{{ item.quantity }}
+</td>
+
+<td class="text-right bold">
+₹{% widthratio item.variant.product.price 1 item.quantity %}
+</td>
+
+</tr>
+
+{% endfor %}
+
+</tbody>
+
+</table>
+
+
+<div class="divider"></div>
+
+
+<table>
+
+<tr>
+
+<td class="text-right">
+Taxable Value:
+</td>
+
+<td class="text-right">
+₹{{ order.taxable_amount }}
+</td>
+
+</tr>
+
+
+<tr class="grand-total bold">
+
+<td class="text-right">
+GRAND TOTAL:
+</td>
+
+<td class="text-right">
+₹{{ order.total_amount }}
+</td>
+
+</tr>
+
+</table>
+
+
+<div class="bold" style="margin-top:8px;font-size:10px">
+GST BREAKUP
+</div>
+
+
+<table class="tax-table">
+
+<thead>
+
+<tr>
+
+<th>RATE</th>
+<th>TAXABLE</th>
+<th>CGST (2.5%)</th>
+<th>SGST (2.5%)</th>
+
+</tr>
+
+</thead>
+
+
+<tbody>
+
+<tr>
+
+<td>5%</td>
+<td>{{ order.taxable_amount }}</td>
+<td>{{ order.cgst }}</td>
+<td>{{ order.sgst }}</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+
+<div class="text-center" style="margin-top:20px">
+
+<p class="bold">
+THANK YOU VISIT AGAIN!
+</p>
+
+<p style="font-size:9px">
+Computer Generated Receipt
+</p>
+
+</div>
+
+</div>
+
+
+{% if not forloop.last %}
+<div style="page-break-after:always;"></div>
+{% endif %}
+</div>
+{% endfor %}
+
+
+</body>
+</html> -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: 80mm auto;
+        margin: 0;
+    }
+
+    body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    width: 80mm;
+    margin: 0;
+    padding: 5px;
+    color: #000;
+    background: #fff;
+    box-sizing: border-box;
+    font-weight: bold; /* ✅ ADD THIS */
+}
+
+    /* Outer Border Container */
+    .receipt-border {
+        border: 1px solid #000;
+        padding: 8px; /* Internal spacing from the border */
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* alignment helpers */
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .bold { font-weight: bold; }
+
+    /* prevent bill breaking */
+    .order-slip {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    /* header */
+    .header { padding: 5px 0; }
+    .logo {
+        font-size: 18px;
+        text-transform: uppercase;
+        margin: 0;
+    }
+
+    /* divider */
+    .divider {
+        border-top: 1px dashed #000;
+        margin: 5px 0;
+    }
+
+    /* tables */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 5px;
+    }
+
+    th {
+        text-align: left;
+        border-bottom: 1px solid #000;
+        padding: 2px 0;
+        font-size: 11px;
+    }
+
+    td {
+        padding: 3px 0;
+        vertical-align: top;
+    }
+
+    /* billing box - changed to dotted/dashed to distinguish from outer border */
+    .bill-to {
+        border: 1px dashed #000;
+        padding: 5px;
+        margin: 5px 0;
+        font-size: 11px;
+    }
+
+    /* gst table */
+    .tax-table {
+        margin-top: 10px;
+        border: 1px solid #000;
+    }
+
+    .tax-table th,
+    .tax-table td {
+        border: 1px solid #000;
+        font-size: 10px;
+        text-align: center;
+        padding: 2px;
+    }
+
+    .grand-total {
+        font-size: 14px;
+        border-top: 1px double #000;
+        padding-top: 4px;
+    }
+
+    .order-page {
+        page-break-after: always;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        padding-bottom: 10px;
+    }
+</style>
+</head>
+
+<body>
+
+{% for order in orders %}
+<div class="order-page">
+    <div class="receipt-border">
+        <div class="order-slip">
+            <div class="header text-center">
+                <h1 class="logo">BABA TEXTILES</h1>
+                <p style="margin:2px 0;">GT ROAD, SRIKAKULAM</p>
+                <p style="margin:2px 0;">Phone: 8328596985</p>
+                <p class="bold">GSTIN: 37BBOPT4548Q1ZG</p>
+                <div class="divider"></div>
+                <p class="bold" style="font-size:14px;margin:2px 0;">TAX INVOICE</p>
+            </div>
+
+            <table style="font-size:11px">
+                <tr>
+                    <td>INV: {{ order.order_number }}</td>
+                    <td class="text-right">DATE: {{ order.created_at|date:"d/m/Y" }}</td>
+                </tr>
+            </table>
+
+            <div class="bill-to">
+                <div class="bold">BILL TO:</div>
+                <div>{{ order.customer_name|upper }}</div>
+                {% if order.address %}
+                <div>{{ order.address }}, {{ order.city }}</div>
+                <div>{{ order.state }} - {{ order.pincode }}</div>
+                {% endif %}
+                {% if order.phone %}
+                <div>PH: {{ order.phone }}</div>
+                {% endif %}
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>DESCRIPTION</th>
+                        <th class="text-right">QTY</th>
+                        <th class="text-right">AMT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.items.all %}
+                    <tr>
+                        <td>
+                            <div class="bold">{{ item.variant.product.name|upper }}</div>
+                            <div style="font-size:10px">HSN: 6204 | GST: 5%</div>
+                        </td>
+                        <td class="text-right">{{ item.quantity }}</td>
+                        <td class="text-right bold">₹{% widthratio item.variant.product.price 1 item.quantity %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="divider"></div>
+
+            <table>
+                <tr>
+                    <td class="text-right">Taxable Value:</td>
+                    <td class="text-right">₹{{ order.taxable_amount }}</td>
+                </tr>
+                <tr class="grand-total bold">
+                    <td class="text-right">GRAND TOTAL:</td>
+                    <td class="text-right">₹{{ order.total_amount }}</td>
+                </tr>
+            </table>
+
+            <div class="bold" style="margin-top:8px;font-size:10px">GST BREAKUP</div>
+
+            <table class="tax-table">
+                <thead>
+                    <tr>
+                        <th>RATE</th>
+                        <th>TAXABLE</th>
+                        <th>CGST (2.5%)</th>
+                        <th>SGST (2.5%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>5%</td>
+                        <td>{{ order.taxable_amount }}</td>
+                        <td>{{ order.cgst }}</td>
+                        <td>{{ order.sgst }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="text-center" style="margin-top:20px">
+                <p class="bold">THANK YOU VISIT AGAIN!</p>
+                <p style="font-size:9px">Computer Generated Receipt</p>
+            </div>
+        </div>
+    </div>
+    </div>
+{% endfor %}
+
+</body>
+</html>
