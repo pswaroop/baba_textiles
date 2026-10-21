@@ -6,7 +6,6 @@ import { ShieldCheck, MapPin, X, AlertCircle, MessageSquare } from "lucide-react
 import { toast } from "react-toastify";
 import {
   CART_HANDOFF_PARAM,
-  checkoutHandoffUrl,
   clearPendingPayment,
   decodeCartHandoff,
   isInAppBrowser,
@@ -15,7 +14,6 @@ import {
   loadRazorpay,
   savePendingPayment,
 } from "../utils/checkout";
-import InAppCheckoutGate from "../components/InAppCheckoutGate";
 
 const API_BASE = "https://api.babatextiles.com/api";
 
@@ -29,8 +27,6 @@ type PaymentOutcome = {
 };
 
 type LinkNotice = { phone: string; minutes: number };
-
-const IN_APP_CONTINUE_KEY = "inAppCheckoutContinue";
 
 // States and union territories, as sent to India Post on the shipment booking.
 const INDIAN_STATES = [
@@ -143,15 +139,8 @@ export default function Checkout() {
   // ✅ Synchronous lock so a payment is only ever completed once
   const hasProcessedPayment = useRef(false);
 
-  // Instagram/Facebook's browser: ask the customer to switch before paying.
+  // Instagram/Facebook's browser: only payment methods that work there.
   const inAppBrowser = isInAppBrowser();
-  const [continuedInApp, setContinuedInApp] = useState(() => {
-    try {
-      return sessionStorage.getItem(IN_APP_CONTINUE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
 
   // Arrived in Chrome/Safari from a hand-off link: the cart is rebuilt from the
   // URL first, replacing whatever this browser had in its cart before.
@@ -251,31 +240,6 @@ export default function Checkout() {
       navigate("/cart");
     }
   }, [cart, navigate, restoringCart]);
-
-  const handoffUrl = checkoutHandoffUrl(
-    cart.map((item) => ({
-      productId: item.product.id,
-      variantId: item.variantId,
-      quantity: item.quantity,
-    }))
-  );
-  const showInAppGate = inAppBrowser && !continuedInApp && cart.length > 0;
-
-  // Keep the hand-off link in the address bar while the gate shows, so
-  // Instagram's own "Open in external browser" menu carries the cart too.
-  useEffect(() => {
-    if (!showInAppGate) return;
-    window.history.replaceState(window.history.state, "", handoffUrl);
-  }, [showInAppGate, handoffUrl]);
-
-  const continueInApp = () => {
-    try {
-      sessionStorage.setItem(IN_APP_CONTINUE_KEY, "1");
-    } catch {
-      // Shown again on reload; nothing else depends on it.
-    }
-    setContinuedInApp(true);
-  };
 
   const noteLinkSent = (outcome: PaymentOutcome | null) => {
     if (!outcome?.payment_link_sent) return false;
@@ -704,10 +668,6 @@ export default function Checkout() {
         </div>
       </div>
     );
-  }
-
-  if (showInAppGate) {
-    return <InAppCheckoutGate handoffUrl={handoffUrl} onContinue={continueInApp} />;
   }
 
   return (

@@ -7,8 +7,8 @@ import React from 'react';
     const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       const location = useLocation();
       const isAdminRoute = location.pathname.startsWith('/admin');
-      // Only where a customer is about to buy. Checkout has its own full-page
-      // step (InAppCheckoutGate) instead of this banner.
+      // Only where a customer is about to buy; not on checkout, which handles
+      // in-app browsers itself by offering only methods that work there.
       const isPurchaseRoute = /^\/(product|cart)/.test(location.pathname);
 
       if (isAdminRoute) return <>{children}</>;
