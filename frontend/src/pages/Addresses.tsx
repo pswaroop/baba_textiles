@@ -55,8 +55,8 @@ export default function Addresses() {
     e.preventDefault();
     const method = editingId ? "PUT" : "POST";
     const url = editingId
-      ? `http://api.babatextiles.com/api/auth/addresses/${editingId}/`
-      : "http://api.babatextiles.com/api/auth/addresses/";
+      ? `https://api.babatextiles.com/api/auth/addresses/${editingId}/`
+      : "https://api.babatextiles.com/api/auth/addresses/";
 
     const res = await fetch(url, {
       method: method,
@@ -88,7 +88,7 @@ export default function Addresses() {
       return;
 
     const res = await fetch(
-      `http://api.babatextiles.com/api/auth/addresses/${id}/`,
+      `https://api.babatextiles.com/api/auth/addresses/${id}/`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },

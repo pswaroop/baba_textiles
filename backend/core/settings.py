@@ -11,25 +11,41 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-
+import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Secrets live in backend/.env (never committed). Real environment variables win.
+_env_file = BASE_DIR / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-15o17%k#i7s6^gl5!hq11tx*+#v%3r@*&3cc045a#!z=m^i=w&'
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-ALLOWED_HOSTS = []
-
+DEBUG = False
+ALLOWED_HOSTS = [
+    'babatextiles.com',
+    'www.babatextiles.com',
+    'api.babatextiles.com',
+    'admin.babatextiles.com',
+    'localhost',
+    '127.0.0.1',
+]
 
 # Application definition
 
 INSTALLED_APPS = [
+    #'nested_admin',
     'jazzmin',  # ✅ ADD THIS (must be FIRST)
 
     'django.contrib.admin',
@@ -50,6 +66,7 @@ INSTALLED_APPS = [
     'colorfield',
     'django.contrib.sites',
     'users',
+    'shipping',
 ]
 # SITE_ID = 1
 
@@ -71,8 +88,10 @@ REST_FRAMEWORK = {
 }
 
 ROOT_URLCONF = 'core.urls'
-CORS_ALLOW_ALL_ORIGINS = True
-
+CORS_ALLOWED_ORIGINS = [
+    "https://babatextiles.com",
+    "https://www.babatextiles.com",
+]
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -96,8 +115,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'babatextiles_db',
+        'USER': 'babatextiles_user',
+        'PASSWORD': os.environ["DB_PASSWORD"],
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
 
@@ -140,17 +163,15 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
-
-USE_I18N = True
-
+TIME_ZONE = 'Asia/Kolkata' #Value needs to be modified as per the required time zone
 USE_TZ = True
-
+USE_L10N = True
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -161,5 +182,99 @@ import os
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-RAZORPAY_KEY_ID = ""
-RAZORPAY_KEY_SECRET = ""
+RAZORPAY_KEY_ID = os.environ["RAZORPAY_KEY_ID"]
+RAZORPAY_KEY_SECRET = os.environ["RAZORPAY_KEY_SECRET"]
+RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+
+# Where Razorpay's redirect callback sends the customer back to once the
+# payment result has been recorded server-side.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://babatextiles.com")
+
+# ---------------------------------------------------------------------------
+# India Post (Department of Posts) shipment booking + tracking integration.
+# Sandbox/UAT values below — override with real env vars for production.
+# ---------------------------------------------------------------------------
+INDIAPOST_BASE_URL = os.environ.get("INDIAPOST_BASE_URL", "https://test.cept.gov.in")
+INDIAPOST_USERNAME = os.environ.get("INDIAPOST_USERNAME", "1773620804")
+INDIAPOST_PASSWORD = os.environ.get("INDIAPOST_PASSWORD", "")
+INDIAPOST_BULK_CUSTOMER_ID = os.environ.get("INDIAPOST_BULK_CUSTOMER_ID", "1773620804")
+
+# contract_id issued per article_type/service. Add an entry here whenever a
+# new service type is enabled for booking.
+INDIAPOST_CONTRACT_IDS = {
+    "BUSINESS_PARCEL": os.environ.get("INDIAPOST_CONTRACT_ID_BUSINESS_PARCEL", "41562240"),
+    "SP_INLAND_DOC": os.environ.get("INDIAPOST_CONTRACT_ID_SP_INLAND_DOC", "41562240"),
+    "SP_INLAND_PARCEL": os.environ.get("INDIAPOST_CONTRACT_ID_SP_INLAND_PARCEL", "41562240"),
+    "24_SPEEDPOST_DOC": os.environ.get("INDIAPOST_CONTRACT_ID_24_SPEEDPOST_DOC", "41562240"),
+    "24_SPP_PARSPL": os.environ.get("INDIAPOST_CONTRACT_ID_24_SPP_PARSPL", "41562240"),
+    "48_SPEEDPOST_DOC": os.environ.get("INDIAPOST_CONTRACT_ID_48_SPEEDPOST_DOC", "41562240"),
+}
+
+# Default service booked for orders. One of: BUSINESS_PARCEL, SP_INLAND_DOC,
+# SP_INLAND_PARCEL, 24_SPEEDPOST_DOC, 24_SPP_PARSPL, 48_SPEEDPOST_DOC.
+INDIAPOST_DEFAULT_SERVICE_TYPE = os.environ.get("INDIAPOST_DEFAULT_SERVICE_TYPE", "BUSINESS_PARCEL")
+# ROLL (cylindrical) or NROL (square/rectangular) — used for parcel-type bookings.
+INDIAPOST_DEFAULT_SHAPE = os.environ.get("INDIAPOST_DEFAULT_SHAPE", "NROL")
+
+INDIAPOST_PICKUP_OR_DROPOFF = os.environ.get("INDIAPOST_PICKUP_OR_DROPOFF", "PICKUP")
+# Leave blank to auto-resolve from INDIAPOST_SENDER_PINCODE via the Pincode Search API.
+INDIAPOST_PICKUP_OFFICE_ID = os.environ.get("INDIAPOST_PICKUP_OFFICE_ID", "")
+# One of '10:00-13:00' / '13:00-16:00'.
+INDIAPOST_PICKUP_SLOT = os.environ.get("INDIAPOST_PICKUP_SLOT", "10:00-13:00")
+
+# Warehouse/sender address used as both the booking sender and the pickup address.
+INDIAPOST_SENDER_NAME = os.environ.get("INDIAPOST_SENDER_NAME", "BABA TEXTILES")
+INDIAPOST_SENDER_COMPANY = os.environ.get("INDIAPOST_SENDER_COMPANY", "BABA TEXTILES")
+# NOTE: only city/state/pincode were provided — fill in the actual street
+# address here (or via env var) before going live.
+INDIAPOST_SENDER_ADDRESS_LINE1 = os.environ.get("INDIAPOST_SENDER_ADDRESS_LINE1", "SRIKAKULAM")
+INDIAPOST_SENDER_ADDRESS_LINE2 = os.environ.get("INDIAPOST_SENDER_ADDRESS_LINE2", "SRIKAKULAM")
+INDIAPOST_SENDER_CITY = os.environ.get("INDIAPOST_SENDER_CITY", "SRIKAKULAM")
+INDIAPOST_SENDER_STATE = os.environ.get("INDIAPOST_SENDER_STATE", "ANDHRA PRADESH")
+INDIAPOST_SENDER_PINCODE = os.environ.get("INDIAPOST_SENDER_PINCODE", "532001")
+INDIAPOST_SENDER_MOBILE = os.environ.get("INDIAPOST_SENDER_MOBILE", "8328596985")
+
+# Fallback package weight/dimensions for products that don't set their own
+# weight_grams/length_cm/breadth_cm/height_cm.
+INDIAPOST_DEFAULT_WEIGHT_GRAMS = int(os.environ.get("INDIAPOST_DEFAULT_WEIGHT_GRAMS", "500"))
+INDIAPOST_DEFAULT_LENGTH_CM = int(os.environ.get("INDIAPOST_DEFAULT_LENGTH_CM", "25"))
+INDIAPOST_DEFAULT_BREADTH_CM = int(os.environ.get("INDIAPOST_DEFAULT_BREADTH_CM", "20"))
+INDIAPOST_DEFAULT_HEIGHT_CM = int(os.environ.get("INDIAPOST_DEFAULT_HEIGHT_CM", "5"))
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+CSRF_TRUSTED_ORIGINS = [
+    'https://babatextiles.com',
+    'https://www.babatextiles.com',
+    'https://api.babatextiles.com',
+    'https://admin.babatextiles.com',
+]
+
+JAZZMIN_SETTINGS = {
+    # Title on the window tab / login screen
+    "site_title": "Baba Textiles Admin",
+
+    # Title on the brand (top left corner of the dashboard)
+    "site_brand": "Baba Textiles",
+
+    # Welcome text on the login screen
+    "welcome_sign": "Welcome to Baba Textiles Administration",
+
+    # Copyright text on the footer
+    "copyright": "Baba Textiles",
+
+    # (Optional) If you have a logo in your static folder, uncomment and set the path here:
+    # "site_logo": "images/baba_textiles_logo.png",
+
+    # Your existing ordering configuration
+    "order_with_respect_to": [
+        "products",
+        "products.product",
+        "products.category",
+        "products.producttag",
+        "products.heroimage",
+        "products.productcolor",
+        "products.productvariant",
+    ],
+}
+

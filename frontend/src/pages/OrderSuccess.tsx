@@ -62,8 +62,11 @@
 //     </div>
 //   );
 // }
-import { useNavigate, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { CheckCircle, FileText } from "lucide-react";
+import { useShop } from "../context/ShopContext";
+import { clearPendingPayment } from "../utils/checkout";
 
 export default function OrderSuccess() {
   const navigate = useNavigate();
@@ -72,7 +75,20 @@ export default function OrderSuccess() {
   const location = useLocation();
   
   // ✅ 2. Extract the orderNumber. If it's missing, show "N/A"
-  const orderNumber = location.state?.orderNumber || "N/A";
+  const [searchParams] = useSearchParams();
+  const { clearCart } = useShop();
+
+  // Razorpay's redirect lands here from the server with ?order=, after the
+  // payment has been verified — so this page is where the cart is emptied.
+  const orderFromUrl = searchParams.get("order");
+  const orderNumber = orderFromUrl || location.state?.orderNumber || "N/A";
+
+  useEffect(() => {
+    if (orderFromUrl) {
+      clearCart();
+      clearPendingPayment();
+    }
+  }, [orderFromUrl, clearCart]);
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 px-4">

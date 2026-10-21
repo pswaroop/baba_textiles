@@ -20,7 +20,7 @@ export default function Auth() {
     onSuccess: async (tokenResponse) => {
       setLoading(true);
       try {
-        const res = await fetch("http://api.babatextiles.com/api/auth/google/", {
+        const res = await fetch("https://api.babatextiles.com/api/auth/google/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ access_token: tokenResponse.access_token }),

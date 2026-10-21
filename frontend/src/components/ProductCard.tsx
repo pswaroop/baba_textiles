@@ -1,406 +1,135 @@
-// import React, { useState } from 'react';
-// import { Link } from 'react-router-dom';
-// import { motion } from 'framer-motion';
-// import type { Product } from '../context/ShopContext';
-// import { ShoppingBag, Heart } from 'lucide-react';
-// import { useShop } from '../context/ShopContext';
-
-// const ProductCard = ({ product }: { product: Product }) => {
-//   const [activeColorIdx, setActiveColorIdx] = useState(0);
-//   const { addToWishlist, removeFromWishlist, isInWishlist } = useShop();
-
-//   const activeColor = product.colors[activeColorIdx];
-//   const isOutOfStock = activeColor.stock === 0;
-//   const wishlisted = isInWishlist(product.id);
-
-//   return (
-//     <motion.div
-//       whileHover={{ y: -8 }}
-//       className="group flex flex-col bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-black/5"
-//     >
-//       {/* Image Container */}
-//       <Link
-//         to={`/product/${product.id}`}
-//         className="relative aspect-[3/4] overflow-hidden bg-baba-softbg"
-//       >
-//         {/* Product Image */}
-//         <motion.img
-//           key={activeColor.image}
-//           initial={{ opacity: 0 }}
-//           animate={{ opacity: 1 }}
-//           transition={{ duration: 0.3 }}
-//           src={activeColor.image}
-//           alt={product.name}
-//           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-//         />
-
-//         {/* ❤️ Wishlist Button */}
-//         <button
-//           onClick={(e) => {
-//             e.preventDefault();
-//             wishlisted
-//               ? removeFromWishlist(product.id)
-//               : addToWishlist(product);
-//           }}
-//           className="absolute top-3 right-3 bg-white/90 backdrop-blur p-2 rounded-full shadow-md hover:scale-110 transition"
-//         >
-//           <Heart
-//             size={18}
-//             className={`transition ${
-//               wishlisted
-//                 ? "fill-red-500 text-red-500"
-//                 : "text-baba-primary"
-//             }`}
-//           />
-//         </button>
-
-//         {/* Sold Out Badge */}
-//         {isOutOfStock && (
-//           <div className="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm shadow-md">
-//             Sold Out
-//           </div>
-//         )}
-
-//         {/* Quick Action Overlay */}
-//         <div className="absolute inset-x-0 bottom-0 p-4 opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-gradient-to-t from-black/60 to-transparent">
-//           <button className="w-full bg-white/90 backdrop-blur text-baba-primary font-medium py-2 rounded flex items-center justify-center gap-2 hover:bg-baba-accent hover:text-white transition-colors">
-//             <ShoppingBag className="w-4 h-4" /> View Details
-//           </button>
-//         </div>
-//       </Link>
-
-//       {/* Content */}
-//       <div className="p-5 flex flex-col flex-grow">
-//         <div className="flex justify-between items-start mb-2">
-//           <p className="text-xs text-baba-primary/60 uppercase tracking-wider">
-//             {product.category}
-//           </p>
-//           <span className="hidden" data-code={product.code}>
-//             {product.code}
-//           </span>
-//         </div>
-
-//         <Link
-//           to={`/product/${product.id}`}
-//           className="group-hover:text-baba-accent transition-colors"
-//         >
-//           <h3 className="font-serif font-medium text-lg text-baba-textdark leading-tight mb-2 line-clamp-1">
-//             {product.name}
-//           </h3>
-//         </Link>
-
-//         <div className="mt-auto pt-4 flex items-center justify-between">
-//           <p className="font-medium text-baba-primary">
-//             ₹{product.price.toLocaleString('en-IN')}
-//           </p>
-
-//           {/* Color Selectors */}
-//           {product.colors.length > 1 && (
-//             <div className="flex items-center gap-1.5">
-//               {product.colors.map((color, idx) => (
-//                 <button
-//                   key={color.name}
-//                   onClick={(e) => {
-//                     e.preventDefault();
-//                     setActiveColorIdx(idx);
-//                   }}
-//                   className={`w-4 h-4 rounded-full border-2 transition-all ${
-//                     activeColorIdx === idx
-//                       ? 'border-baba-primary scale-110 shadow-sm'
-//                       : 'border-transparent hover:scale-110 shadow-sm'
-//                   }`}
-//                   style={{ backgroundColor: color.hex }}
-//                   title={color.name}
-//                   aria-label={`Select color ${color.name}`}
-//                 />
-//               ))}
-//             </div>
-//           )}
-//         </div>
-//       </div>
-//     </motion.div>
-//   );
-// };
-
-// export default ProductCard;
-
-// import React, { useState, useMemo } from "react";
-// import { Link } from "react-router-dom";
-// import { motion } from "framer-motion";
-// import type { Product } from "../context/ShopContext";
-// import { ShoppingBag, Heart } from "lucide-react";
-// import { useShop } from "../context/ShopContext";
-
-// const ProductCard = ({ product }: { product: Product }) => {
-//   const { addToWishlist, removeFromWishlist, isInWishlist } = useShop();
-
-//   const [activeColorIdx, setActiveColorIdx] = useState(0);
-
-//   /* ================= SAFE COLOR ================= */
-//   const activeColor =
-//     product.colors?.[activeColorIdx] || product.colors?.[0];
-
-//   /* ================= SAFE IMAGE ================= */
-//   const firstImage =
-//     activeColor?.images?.[0]?.image || "/placeholder.png";
-
-//   /* ================= STOCK CHECK ================= */
-//   const isOutOfStock = useMemo(() => {
-//     if (!activeColor || !product.variants?.length) return false;
-
-//     return !product.variants.some(
-//       (variant) =>
-//         variant.color === activeColor.name &&
-//         variant.stock > 0
-//     );
-//   }, [product.variants, activeColor]);
-
-//   const wishlisted = isInWishlist(product.id);
-
-//   return (
-//     <motion.div
-//       whileHover={{ y: -8 }}
-//       className="group flex flex-col bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-black/5"
-//     >
-//       {/* ================= IMAGE ================= */}
-//       <Link
-//         to={`/product/${product.id}`}
-//         className="relative aspect-[3/4] overflow-hidden bg-baba-softbg"
-//       >
-//         <motion.img
-//           key={firstImage}
-//           initial={{ opacity: 0 }}
-//           animate={{ opacity: 1 }}
-//           transition={{ duration: 0.3 }}
-//           src={firstImage}
-//           alt={product.name}
-//           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-//         />
-
-//         {/* ❤️ Wishlist */}
-//         <button
-//           onClick={(e) => {
-//             e.preventDefault();
-//             wishlisted
-//               ? removeFromWishlist(product.id)
-//               : addToWishlist(product);
-//           }}
-//           className="absolute top-3 right-3 bg-white/90 backdrop-blur p-2 rounded-full shadow-md hover:scale-110 transition"
-//         >
-//           <Heart
-//             size={18}
-//             className={`transition ${
-//               wishlisted
-//                 ? "fill-red-500 text-red-500"
-//                 : "text-baba-primary"
-//             }`}
-//           />
-//         </button>
-
-//         {/* Sold Out Badge */}
-//         {/* {isOutOfStock && (
-//           <div className="absolute top-3 left-3 bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm shadow-md">
-//             Sold Out
-//           </div>
-//         )} */}
-
-//         {/* Hover Overlay */}
-//         <div className="absolute inset-x-0 bottom-0 p-4 opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-gradient-to-t from-black/60 to-transparent">
-//           <button className="w-full bg-white/90 backdrop-blur text-baba-primary font-medium py-2 rounded flex items-center justify-center gap-2 hover:bg-baba-accent hover:text-white transition-colors">
-//             <ShoppingBag className="w-4 h-4" /> View Details
-//           </button>
-//         </div>
-//       </Link>
-
-//       {/* ================= CONTENT ================= */}
-//       <div className="p-5 flex flex-col flex-grow">
-//         <p className="text-xs text-baba-primary/60 uppercase tracking-wider mb-2">
-//           {product.category}
-//         </p>
-
-//         <Link
-//           to={`/product/${product.id}`}
-//           className="group-hover:text-baba-accent transition-colors"
-//         >
-//           <h3 className="font-serif font-medium text-lg text-baba-textdark leading-tight mb-2 line-clamp-1">
-//             {product.name}
-//           </h3>
-//         </Link>
-
-//         <div className="mt-auto pt-4 flex items-center justify-between">
-//           <p className="font-medium text-baba-primary">
-//             ₹{product.price.toLocaleString("en-IN")}
-//           </p>
-
-//           {/* Color Selector */}
-//           {product.colors?.length > 1 && (
-//             <div className="flex items-center gap-1.5">
-//               {product.colors.map((color, idx) => (
-//                 <button
-//                   key={color.id}
-//                   onClick={(e) => {
-//                     e.preventDefault();
-//                     setActiveColorIdx(idx);
-//                   }}
-//                   className={`w-4 h-4 rounded-full border-2 transition-all ${
-//                     activeColorIdx === idx
-//                       ? "border-baba-primary scale-110 shadow-sm"
-//                       : "border-transparent hover:scale-110 shadow-sm"
-//                   }`}
-//                   style={{ backgroundColor: color.hex }}
-//                 />
-//               ))}
-//             </div>
-//           )}
-//         </div>
-//       </div>
-//     </motion.div>
-//   );
-// };
-
-// export default ProductCard;
-
-import React, { useState, useMemo } from "react";
+import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { Product } from "../context/ShopContext";
-import { ShoppingBag, Heart } from "lucide-react";
+import { ShoppingBag, Heart, Image as ImageIcon } from "lucide-react";
 import { useShop } from "../context/ShopContext";
 
-const ProductCard = ({ product }: { product: Product }) => {
+type ProductCardProps = {
+  product: Product;
+  priority?: boolean;
+};
+
+const ProductCard = ({ product, priority = false }: ProductCardProps) => {
   const { addToWishlist, removeFromWishlist, isInWishlist } = useShop();
 
-  const [activeColorIdx, setActiveColorIdx] = useState(0);
+  const { cardImage, cardThumb } = useMemo(() => {
+    const firstValid = product.images?.find((img) => img?.image);
+    const full = firstValid?.image || "/placeholder.png";
+    // Real 400px/800px variants — not a placebo query-string trick. Grid
+    // cards render at very different widths depending on the page (Home/
+    // Wishlist go up to 4 columns, Shop stays at 2 columns until 1024px,
+    // meaning the same card can be under 200px or over 450px wide), so a
+    // single fixed-size source is either wasteful or blurry depending on
+    // layout. srcSet + sizes lets the browser pick per case.
+    return { cardImage: full, cardThumb: firstValid?.thumbnail || full };
+  }, [product.images]);
 
-  /* ================= SAFE COLOR ================= */
-  const activeColor =
-    product.colors?.[activeColorIdx] || product.colors?.[0];
-
-  /* ================= SAFE IMAGE ================= */
-  const firstImage =
-    activeColor?.images?.[0]?.image || "/placeholder.png";
-
-  /* ================= STOCK CHECK ================= */
-  const isOutOfStock = useMemo(() => {
-    if (!activeColor || !product.variants?.length) return false;
-
-    return !product.variants.some(
-      (variant) =>
-        variant.color === activeColor.name &&
-        variant.stock > 0
-    );
-  }, [product.variants, activeColor]);
+  const isOutOfStock =
+    product.variants?.every((variant) => variant.stock === 0) || false;
 
   const wishlisted = isInWishlist(product.id);
 
   return (
     <motion.div
-      whileHover={{ y: -8 }}
-      className="group flex flex-col bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-black/5"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      whileHover={{ y: -3 }}
+      className="group flex flex-col bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border border-black/5 h-full"
     >
-      {/* ================= IMAGE ================= */}
       <Link
         to={`/product/${product.id}`}
-        className="relative aspect-[3/4] overflow-hidden bg-baba-softbg"
+        className="relative aspect-[3/4] overflow-hidden bg-gray-50 flex items-center justify-center"
       >
-        <motion.img
-          key={firstImage}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-          src={firstImage}
+        {/* Placeholder skeleton behind the image */}
+        <div className="absolute inset-0 flex items-center justify-center text-gray-200 z-0">
+          <ImageIcon className="w-10 h-10 opacity-40" />
+        </div>
+
+        {/* 
+          🚀 OPTIMIZATION: Removed opacity state. 
+          Let the browser render the image natively and instantly.
+        */}
+        <img
+          src={cardImage}
+          srcSet={
+            cardThumb !== cardImage
+              ? `${cardThumb} 400w, ${cardImage} 800w`
+              : undefined
+          }
+          sizes="(min-width: 1024px) 30vw, 48vw"
           alt={product.name}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding={priority ? "sync" : "async"}
+          className="absolute inset-0 h-full w-full object-cover z-10 transition-transform duration-500 group-hover:scale-[1.03]"
         />
 
-        {/* ❤️ Wishlist */}
         <button
           onClick={(e) => {
             e.preventDefault();
-            wishlisted
-              ? removeFromWishlist(product.id)
-              : addToWishlist(product);
+            wishlisted ? removeFromWishlist(product.id) : addToWishlist(product);
           }}
-          className="absolute top-3 right-3 bg-white/90 backdrop-blur p-2 rounded-full shadow-md hover:scale-110 transition"
+          className="absolute top-3 right-3 z-20 bg-white/90 backdrop-blur p-2 rounded-full shadow-sm hover:scale-110 transition"
+          aria-label={
+            wishlisted ? "Remove from wishlist" : "Add to wishlist"
+          }
         >
           <Heart
             size={18}
-            className={`transition ${
-              wishlisted
-                ? "fill-red-500 text-red-500"
-                : "text-baba-primary"
+            className={`transition-colors ${
+              wishlisted ? "fill-red-500 text-red-500" : "text-gray-500 hover:text-red-500"
             }`}
           />
         </button>
 
-        {/* Hover Overlay */}
-        <div className="absolute inset-x-0 bottom-0 p-4 opacity-0 group-hover:opacity-100 translate-y-4 group-hover:translate-y-0 transition-all duration-300 bg-gradient-to-t from-black/60 to-transparent">
-          <button className="w-full bg-white/90 backdrop-blur text-baba-primary font-medium py-2 rounded flex items-center justify-center gap-2 hover:bg-baba-accent hover:text-white transition-colors">
-            <ShoppingBag className="w-4 h-4" /> View Details
-          </button>
+        <div className="absolute inset-x-0 bottom-0 z-20 p-4 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 bg-gradient-to-t from-black/60 to-transparent">
+          <div className="w-full bg-white/95 backdrop-blur text-baba-primary font-medium py-2 rounded-lg shadow-sm flex items-center justify-center gap-2">
+            <ShoppingBag className="w-4 h-4" />
+            View Details
+          </div>
         </div>
       </Link>
 
-      {/* ================= CONTENT ================= */}
-      <div className="p-5 flex flex-col flex-grow">
-        <p className="text-xs text-baba-primary/60 uppercase tracking-wider mb-2">
-          {product.category}
+      <div className="p-4 md:p-5 flex flex-col flex-grow relative z-10 bg-white">
+        <p className="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider mb-1.5 font-medium">
+          {product.category_name}
         </p>
 
         <Link
           to={`/product/${product.id}`}
-          className="group-hover:text-baba-accent transition-colors"
+          className="group-hover:text-baba-primary transition-colors"
         >
-          <h3 className="font-serif font-medium text-lg text-baba-textdark leading-tight mb-2 line-clamp-1">
+          <h3 className="font-serif font-medium text-base md:text-lg text-gray-900 leading-tight mb-2 line-clamp-2">
             {product.name}
           </h3>
         </Link>
 
-        <div className="mt-auto pt-4 flex items-center justify-between">
-
-          {/* ================= PRICE ================= */}
-          <div className="flex items-center gap-2">
-            {/* Final Price */}
-            <p className="font-semibold text-baba-primary">
-              ₹{product.price.toLocaleString("en-IN")}
+        <div className="mt-auto pt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-bold text-gray-900 text-sm md:text-base">
+              ₹{Number(product.price).toLocaleString("en-IN")}
             </p>
 
-            {/* Original Price */}
-            {product.discount_percentage > 0 && (
-              <p className="text-sm text-gray-500 line-through">
-                ₹{product.original_price.toLocaleString("en-IN")}
+            {Number(product.discount_percentage) > 0 && (
+              <p className="text-xs md:text-sm text-gray-400 line-through">
+                ₹{Number(product.original_price).toLocaleString("en-IN")}
               </p>
             )}
 
-            {/* Discount Badge */}
-            {product.discount_percentage > 0 && (
-              <span className="text-xs text-green-600 font-medium">
-                {product.discount_percentage}% OFF
+            {Number(product.discount_percentage) > 0 && (
+              <span className="text-[10px] md:text-xs bg-green-50 text-green-700 font-bold px-1.5 py-0.5 rounded border border-green-100">
+                {Math.round(Number(product.discount_percentage))}% OFF
               </span>
             )}
           </div>
 
-          {/* ================= COLOR SELECTOR ================= */}
-          {product.colors?.length > 1 && (
-            <div className="flex items-center gap-1.5">
-              {product.colors.map((color, idx) => (
-                <button
-                  key={color.id}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setActiveColorIdx(idx);
-                  }}
-                  className={`w-4 h-4 rounded-full border-2 transition-all ${
-                    activeColorIdx === idx
-                      ? "border-baba-primary scale-110 shadow-sm"
-                      : "border-transparent hover:scale-110 shadow-sm"
-                  }`}
-                  style={{ backgroundColor: color.color }}
-                />
-              ))}
-            </div>
+          {isOutOfStock && (
+            <span className="px-2 py-0.5 text-[10px] md:text-xs font-bold bg-red-50 text-red-600 rounded border border-red-100 whitespace-nowrap">
+              SOLD OUT
+            </span>
           )}
-
         </div>
       </div>
     </motion.div>

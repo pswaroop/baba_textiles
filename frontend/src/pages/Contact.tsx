@@ -28,7 +28,7 @@ import React from 'react';
                     <Phone className="w-6 h-6" />
                   </div>
                   <h3 className="font-serif text-xl font-bold text-baba-primary mb-2">Call or Email</h3>
-                  <p className="text-gray-600 mb-1">Phone: <a href="tel:8328030460" className="hover:text-baba-accent">8328030460</a></p>
+                  <p className="text-gray-600 mb-1">Phone: <a href="tel:8125114993" className="hover:text-baba-accent">+91 8125114993</a></p>
                   <p className="text-gray-600 break-words">Email: <a href="mailto:tangudukrishna.23@gmail.com" className="hover:text-baba-accent">tangudukrishna.23@gmail.com</a></p>
                 </div>
 

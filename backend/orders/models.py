@@ -1,7 +1,7 @@
-import string
 import secrets
-from django.db import models, transaction
-from django.conf import settings # Use this for User model reference
+import string
+from django.conf import settings
+from django.db import models
 
 
 def generate_order_number():
@@ -11,39 +11,41 @@ def generate_order_number():
 
 
 class Order(models.Model):
-
     PAYMENT_STATUS = [
         ("pending", "Pending"),
         ("paid", "Paid"),
+        ("expired", "Expired"),
         ("failed", "Failed"),
+        ("refund", "Refund"),
     ]
 
-    # ✅ NEW: Order status choices
     STATUS_CHOICES = [
-    ("processed", "Processed"),
-    ("confirmed", "Confirmed"),  # ✅ ADD THIS
-    ("shipped", "Shipped"),
-    ("delivered", "Delivered"),
-    ("cancelled", "Cancelled"),
-]
+        ("processed", "Processed"),
+        ("confirmed", "Confirmed"),
+        ("shipped", "Shipped"),
+        ("delivered", "Delivered"),
+        ("cancelled", "Cancelled"),
+    ]
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        related_name="orders"
+        related_name="orders",
+        db_index=True,
     )
 
     order_number = models.CharField(
         max_length=20,
         unique=True,
         default=generate_order_number,
-        editable=False
+        editable=False,
+        db_index=True,
     )
 
-    customer_name = models.CharField(max_length=100, default="Guest")
-    phone = models.CharField(max_length=15, blank=True, null=True)
+    customer_name = models.CharField(max_length=100, default="Guest", db_index=True)
+    phone = models.CharField(max_length=15, blank=True, null=True, db_index=True)
     address = models.TextField(blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
     state = models.CharField(max_length=100, blank=True, null=True)
@@ -54,54 +56,67 @@ class Order(models.Model):
     payment_status = models.CharField(
         max_length=20,
         choices=PAYMENT_STATUS,
-        default="pending"
+        default="pending",
+        db_index=True,
     )
 
-    # ✅ ADD THIS FIELD
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default="processed"
+        default="processed",
+        db_index=True,
     )
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
-    razorpay_order_id = models.CharField(max_length=200, blank=True, null=True)
-    razorpay_payment_id = models.CharField(max_length=200, blank=True, null=True)
+    # True once the reserved stock for this order has been handed back to the
+    # pool (expiry / failed payment). Guards against releasing or re-deducting
+    # the same reservation twice when a late webhook arrives after cleanup.
+    stock_released = models.BooleanField(default=False)
+
+    # Last gateway error seen for this order, kept for support/debugging.
+    payment_error = models.CharField(max_length=255, blank=True, null=True)
+
+    razorpay_order_id = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    razorpay_payment_id = models.CharField(max_length=200, blank=True, null=True, db_index=True)
     razorpay_signature = models.CharField(max_length=500, blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"]),
+            models.Index(fields=["payment_status", "-created_at"]),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["order_number"]),
+            models.Index(fields=["phone"]),
+        ]
 
     def __str__(self):
         return f"Order #{self.order_number}"
 
 
 class OrderItem(models.Model):
-
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
-        related_name="items"
+        related_name="items",
+        db_index=True,
     )
 
     variant = models.ForeignKey(
         "products.ProductVariant",
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        db_index=True,
     )
 
     quantity = models.PositiveIntegerField()
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["order"]),
+            models.Index(fields=["variant"]),
+        ]
+
     def __str__(self):
         return f"{self.variant} x {self.quantity}"
-
-    def save(self, *args, **kwargs):
-
-        with transaction.atomic():
-
-            if not self.pk:
-
-                if self.variant.stock < self.quantity:
-                    raise ValueError(f"Insufficient stock for {self.variant}")
-
-                self.variant.stock -= self.quantity
-                self.variant.save()
-
-            super().save(*args, **kwargs)

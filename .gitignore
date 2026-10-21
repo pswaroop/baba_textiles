@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+venv/
+
+# Secrets / local data
+.env
+.env.*
+!.env.example
+backend/db.sqlite3
+backend/logs/
+backend/media/
+backend/staticfiles/
+backend/core/settings_prev.py
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# OS
+.DS_Store

@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
+    #path('_nested_admin/', include('nested_admin.urls')),
     path('admin/', admin.site.urls),
     path('api/products/', include('products.urls')),
     path("api/auth/", include("users.urls")),
