@@ -139,7 +139,7 @@ export default function Checkout() {
   // ✅ Synchronous lock so a payment is only ever completed once
   const hasProcessedPayment = useRef(false);
 
-  // Instagram/Facebook's browser: only payment methods that work there.
+  // Instagram/Facebook's browser: a hand-off link must not be restored there.
   const inAppBrowser = isInAppBrowser();
 
   // Arrived in Chrome/Safari from a hand-off link: the cart is rebuilt from the
@@ -595,27 +595,7 @@ export default function Checkout() {
         },
       };
 
-      if (inAppBrowser) {
-        // Instagram/Facebook's browser blocks the jump to UPI apps, so a UPI
-        // app button would hang on "please wait". Offer only methods that
-        // complete inside this browser.
-        options.config = {
-          display: {
-            blocks: {
-              in_app: {
-                name: "Pay using UPI ID, card or netbanking",
-                instruments: [
-                  { method: "upi", flows: ["collect"] },
-                  { method: "card" },
-                  { method: "netbanking" },
-                ],
-              },
-            },
-            sequence: ["block.in_app"],
-            preferences: { show_default_blocks: false },
-          },
-        };
-      } else if (isMobileDevice()) {
+      if (isMobileDevice()) {
         // UPI apps are only offered on phones. List them explicitly so PhonePe
         // comes first and Amazon Pay (whose UPI hand-off was timing out) is not
         // offered; every other method still appears below.
