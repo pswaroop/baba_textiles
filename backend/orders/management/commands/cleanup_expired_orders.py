@@ -7,7 +7,12 @@ from django.db import transaction
 from django.utils import timezone
 
 from orders.models import Order
-from orders.views import ensure_payment_captured, finalize_paid_order
+from orders.views import (
+    cancel_payment_link,
+    ensure_payment_captured,
+    finalize_paid_order,
+    payment_link_is_live,
+)
 from products.models import ProductVariant
 
 
@@ -49,6 +54,27 @@ class Command(BaseCommand):
                     if locked_order.payment_status != "pending":
                         skipped_count += 1
                         continue
+
+                    # The customer was texted a payment link: keep the stock for
+                    # them until it expires, then make sure it was not paid.
+                    if locked_order.payment_link_id:
+                        if payment_link_is_live(locked_order):
+                            skipped_count += 1
+                            continue
+
+                        link_status = cancel_payment_link(locked_order)
+                        if link_status is None:
+                            # Could not verify; never expire a possibly paid order.
+                            skipped_count += 1
+                            continue
+                        if link_status == "paid":
+                            recovered_count += 1
+                            self.stdout.write(
+                                self.style.WARNING(
+                                    f"Recovered order paid by payment link: {locked_order.order_number}"
+                                )
+                            )
+                            continue
 
                     if locked_order.razorpay_order_id:
                         try:

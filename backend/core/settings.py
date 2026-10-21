@@ -189,6 +189,8 @@ RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
 # Where Razorpay's redirect callback sends the customer back to once the
 # payment result has been recorded server-side.
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://babatextiles.com")
+# Public base URL of this API; Razorpay sends payment-link customers back here.
+API_URL = os.environ.get("API_URL", "https://api.babatextiles.com")
 
 # ---------------------------------------------------------------------------
 # India Post (Department of Posts) shipment booking + tracking integration.

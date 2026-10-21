@@ -81,6 +81,13 @@ class Order(models.Model):
     razorpay_payment_id = models.CharField(max_length=200, blank=True, null=True, db_index=True)
     razorpay_signature = models.CharField(max_length=500, blank=True, null=True)
 
+    # Razorpay Payment Link texted to the customer after a failed checkout
+    # attempt. While it is live the order stays `pending` and keeps its stock.
+    payment_link_id = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    payment_link_url = models.URLField(max_length=300, blank=True, null=True)
+    payment_link_sent_at = models.DateTimeField(blank=True, null=True)
+    payment_link_expires_at = models.DateTimeField(blank=True, null=True)
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [

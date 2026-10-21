@@ -7,9 +7,9 @@ import React from 'react';
     const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       const location = useLocation();
       const isAdminRoute = location.pathname.startsWith('/admin');
-      // Only where a customer is about to buy — the earlier they switch
-      // browsers, the less they lose (the cart does not carry over).
-      const isPurchaseRoute = /^\/(product|cart|checkout)/.test(location.pathname);
+      // Only where a customer is about to buy. Checkout has its own full-page
+      // step (InAppCheckoutGate) instead of this banner.
+      const isPurchaseRoute = /^\/(product|cart)/.test(location.pathname);
 
       if (isAdminRoute) return <>{children}</>;
 

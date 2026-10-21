@@ -64,11 +64,58 @@ export function isMobileDevice(): boolean {
   return typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-// Android only: hands the current page to Chrome. iOS has no equivalent, so
-// iPhone users are told to use the "Open in external browser" menu instead.
-export function openInChrome() {
-  const target = window.location.href.replace(/^https?:\/\//, "");
-  window.location.href = `intent://${target}#Intent;scheme=https;package=com.android.chrome;end`;
+// Android only: hands a page to Chrome. iOS has no equivalent, so iPhone users
+// are told to use the "Open in external browser" menu instead. Without Chrome
+// the fallback reloads the page where it is.
+export function openInChrome(url: string = window.location.href) {
+  const target = url.replace(/^https?:\/\//, "");
+  const fallback = encodeURIComponent(url);
+  window.location.href =
+    `intent://${target}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+}
+
+/* ================= CART HAND-OFF ================= */
+// Instagram's browser and Chrome do not share storage, so the cart travels in
+// the checkout link as "productId.variantId.quantity" entries. Only ids and
+// quantities: nothing personal ends up in browser history or server logs.
+
+export const CART_HANDOFF_PARAM = "cart";
+
+export type CartHandoffEntry = {
+  productId: string;
+  variantId: number;
+  quantity: number;
+};
+
+export function encodeCartHandoff(entries: CartHandoffEntry[]): string {
+  return entries.map((e) => `${e.productId}.${e.variantId}.${e.quantity}`).join(",");
+}
+
+export function decodeCartHandoff(value: string | null): CartHandoffEntry[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((part) => part.split("."))
+    .filter((bits) => bits.length === 3)
+    .map(([productId, variantId, quantity]) => ({
+      productId,
+      variantId: Number(variantId),
+      quantity: Number(quantity),
+    }))
+    .filter(
+      (e) =>
+        /^\d+$/.test(e.productId) &&
+        Number.isInteger(e.variantId) &&
+        Number.isInteger(e.quantity) &&
+        e.quantity > 0 &&
+        e.quantity <= 999
+    );
+}
+
+export function checkoutHandoffUrl(entries: CartHandoffEntry[]): string {
+  const url = new URL("/checkout", window.location.origin);
+  url.searchParams.set(CART_HANDOFF_PARAM, encodeCartHandoff(entries));
+  return url.toString();
 }
 
 /* ================= RAZORPAY SCRIPT ================= */

@@ -1,5 +1,7 @@
 import json
 import logging
+import re
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 import razorpay
@@ -10,6 +12,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -81,13 +84,180 @@ def release_order_stock(order):
         return order
 
 
-def settle_abandoned_attempt(order, reason=""):
+PAYMENT_LINK_VALID_MINUTES = 30
+# Caps how many links one phone number can be texted, so a customer retrying
+# over and over is not flooded with SMS.
+PAYMENT_LINK_MAX_PER_PHONE_PER_DAY = 3
+
+
+def payment_link_is_live(order):
+    return bool(
+        order.payment_link_id
+        and order.payment_link_expires_at
+        and order.payment_link_expires_at > timezone.now()
+    )
+
+
+def mask_phone(phone):
+    digits = re.sub(r"\D", "", phone or "")[-10:]
+    if len(digits) != 10:
+        return ""
+    return f"+91 {digits[:2]}•••••{digits[-3:]}"
+
+
+def payment_link_summary(order):
+    """What the browser needs to tell the customer a link is on its way."""
+    if order.payment_status != "pending" or not payment_link_is_live(order):
+        return {"payment_link_sent": False}
+    return {
+        "payment_link_sent": True,
+        "payment_link_phone": mask_phone(order.phone),
+        "payment_link_valid_minutes": PAYMENT_LINK_VALID_MINUTES,
+    }
+
+
+def send_payment_link(order, reason=""):
+    """Text the customer a Razorpay Payment Link for this order.
+
+    Used when checkout failed in a way the customer could not get past (most
+    often a UPI app that never opened from Instagram's in-app browser). SMS
+    links open in the phone's normal browser, where UPI apps work. The order
+    stays `pending` and keeps its stock reserved while the link is live.
+
+    Returns True when a link is live for the order after the call.
+    """
+    phone = re.sub(r"\D", "", order.phone or "")[-10:]
+    if not re.fullmatch(r"[6-9]\d{9}", phone):
+        return False
+
+    recent_links = Order.objects.filter(
+        phone=order.phone,
+        payment_link_sent_at__gte=timezone.now() - timedelta(days=1),
+    ).exclude(id=order.id).count()
+    if recent_links >= PAYMENT_LINK_MAX_PER_PHONE_PER_DAY:
+        logger.info("Payment link not sent for %s: daily limit reached", order.order_number)
+        return False
+
+    amount_in_paise = int(Decimal(str(order.total_amount)) * 100)
+    if amount_in_paise <= 0:
+        return False
+
+    # Locked so the webhook and the browser reporting the same failure at the
+    # same moment cannot text the customer twice.
+    with transaction.atomic():
+        locked = Order.objects.select_for_update().get(id=order.id)
+        if locked.payment_status != "pending" or locked.stock_released:
+            return False
+        if locked.payment_link_id:
+            return payment_link_is_live(locked)
+
+        expires_at = timezone.now() + timedelta(minutes=PAYMENT_LINK_VALID_MINUTES)
+        try:
+            link = client.payment_link.create({
+                "amount": amount_in_paise,
+                "currency": "INR",
+                "accept_partial": False,
+                # One link per order: Razorpay rejects a second link with the
+                # same reference_id, which backs up the lock above.
+                "reference_id": locked.order_number,
+                "description": f"Baba Textiles order #{locked.order_number}",
+                "customer": {
+                    "name": (locked.customer_name or "Customer")[:100],
+                    "contact": f"+91{phone}",
+                },
+                "notify": {"sms": True, "email": False},
+                "reminder_enable": False,
+                "expire_by": int(expires_at.timestamp()),
+                "notes": {"order_number": locked.order_number},
+                "callback_url": f"{settings.API_URL}/api/payment-link-callback/",
+                "callback_method": "get",
+            })
+        except Exception as exc:
+            logger.error("Payment link creation failed for %s: %s", locked.order_number, exc)
+            return False
+
+        locked.payment_link_id = link["id"]
+        locked.payment_link_url = link.get("short_url")
+        locked.payment_link_sent_at = timezone.now()
+        locked.payment_link_expires_at = expires_at
+        locked.payment_error = (reason or "")[:255]
+        locked.save(update_fields=[
+            "payment_link_id", "payment_link_url", "payment_link_sent_at",
+            "payment_link_expires_at", "payment_error",
+        ])
+
+    logger.info("Payment link %s texted for order %s", link["id"], order.order_number)
+    return True
+
+
+def sync_payment_link(order):
+    """Record a payment made through this order's link, if there is one.
+
+    Backs up the `payment_link.paid` webhook. Returns the link's status
+    ("paid", "created", "expired", "cancelled"), or None when there is no link
+    or Razorpay could not be reached.
+    """
+    if not order.payment_link_id:
+        return None
+
+    try:
+        link = client.payment_link.fetch(order.payment_link_id)
+    except Exception as exc:
+        logger.error("Payment link fetch failed for %s: %s", order.order_number, exc)
+        return None
+
+    status = link.get("status")
+    if status == "paid":
+        payment = next(
+            (p for p in link.get("payments") or [] if p.get("status") == "captured"),
+            None,
+        )
+        record_payment_link_payment(order, (payment or {}).get("payment_id"))
+    return status
+
+
+def cancel_payment_link(order):
+    """Stop the order's link from being paid. Returns its final status."""
+    if not order.payment_link_id:
+        return None
+
+    try:
+        client.payment_link.cancel(order.payment_link_id)
+    except Exception as exc:
+        # Already paid, expired or cancelled; sync_payment_link sorts out which.
+        logger.info("Payment link cancel for %s: %s", order.order_number, exc)
+    return sync_payment_link(order)
+
+
+def record_payment_link_payment(order, razorpay_payment_id):
+    order.refresh_from_db()
+
+    if order.payment_status == "paid":
+        if razorpay_payment_id and order.razorpay_payment_id != razorpay_payment_id:
+            # Paid twice: once in checkout and once through the link.
+            logger.error(
+                "DUPLICATE PAYMENT: order %s already paid by %s, link paid by %s",
+                order.order_number, order.razorpay_payment_id, razorpay_payment_id,
+            )
+            Order.objects.filter(id=order.id).update(
+                payment_error=f"DUPLICATE: also paid via link {razorpay_payment_id} - refund it"[:255]
+            )
+        return order
+
+    return finalize_paid_order(order=order, razorpay_payment_id=razorpay_payment_id)
+
+
+def settle_abandoned_attempt(order, reason="", offer_payment_link=False):
     """Close out a payment attempt the customer walked away from.
 
     Razorpay is asked first: if a payment did go through, the order is
-    finalized instead. Only when the gateway confirms nothing was paid is the
-    reservation released and the order marked failed. Gateway errors propagate
-    so the caller can leave the order for the cleanup job to recheck.
+    finalized instead, and if one is still in progress (customer in their UPI
+    app) the order is left alone. Only when the gateway confirms nothing was
+    paid does the order move on: with `offer_payment_link` the customer is
+    texted a payment link and the stock stays reserved for it; otherwise any
+    link is cancelled, the reservation released and the order marked failed.
+    Gateway errors propagate so the caller can leave the order for the cleanup
+    job to recheck.
     """
     if order.payment_status != "pending" or not order.razorpay_order_id:
         return order
@@ -101,13 +271,28 @@ def settle_abandoned_attempt(order, reason=""):
         ensure_payment_captured(settled.get("id"), settled.get("amount"))
         return finalize_paid_order(order=order, razorpay_payment_id=settled.get("id"))
 
+    if any(p.get("status") == "created" for p in payments):
+        # Still in flight. Its webhook (or the cleanup job) settles it.
+        return order
+
+    order.refresh_from_db()
+    if order.payment_link_id:
+        if offer_payment_link and payment_link_is_live(order):
+            return order
+        if cancel_payment_link(order) == "paid":
+            order.refresh_from_db()
+            return order
+    elif offer_payment_link and send_payment_link(order, reason):
+        order.refresh_from_db()
+        return order
+
     release_order_stock(order)
     order.refresh_from_db()
 
     # A webhook may have finalized it while the stock was being released.
     if order.payment_status == "pending":
         order.payment_status = "failed"
-        order.payment_error = (reason or "")[:255]
+        order.payment_error = (reason or order.payment_error or "")[:255]
         order.save(update_fields=["payment_status", "payment_error"])
 
     return order
@@ -189,6 +374,12 @@ def finalize_paid_order(
             update_fields.append("razorpay_signature")
 
         order.save(update_fields=update_fields)
+
+        if order.payment_link_id:
+            # Paid some other way while its link was live: close the link so it
+            # cannot be paid a second time. Also flags it if it already was.
+            transaction.on_commit(lambda: cancel_payment_link(order))
+
         return order
 
 
@@ -214,18 +405,47 @@ def create_order(request):
     # The customer's previous attempt (closed modal, page reloaded while they
     # were in their UPI app) still holds its stock. Settle it first, or a
     # retry fails the stock check against their own reservation.
+    previous_attempts = []
     previous_razorpay_order_id = data.get("previous_razorpay_order_id")
     if previous_razorpay_order_id:
+        previous_attempts += Order.objects.filter(
+            razorpay_order_id=previous_razorpay_order_id,
+            payment_status="pending",
+        )
+
+    # The same cart, retried from another browser (e.g. after switching from
+    # Instagram to Chrome), while the earlier attempt still has a payment link
+    # out. Cancel that link so the customer cannot pay for the cart twice.
+    phone = data.get("phone")
+    if phone:
+        for candidate in Order.objects.filter(
+            phone=phone,
+            payment_status="pending",
+            payment_link_id__isnull=False,
+        ).prefetch_related("items"):
+            same_cart = {i.variant_id: i.quantity for i in candidate.items.all()} == {
+                int(v): q for v, q in aggregated_items.items()
+            }
+            if same_cart and candidate not in previous_attempts:
+                previous_attempts.append(candidate)
+
+    for previous_order in previous_attempts:
         try:
-            previous_order = Order.objects.filter(
-                razorpay_order_id=previous_razorpay_order_id,
-                payment_status="pending",
-            ).first()
-            if previous_order:
-                settle_abandoned_attempt(previous_order, "Superseded by a new checkout attempt")
+            previous_order = settle_abandoned_attempt(
+                previous_order, "Superseded by a new checkout attempt"
+            )
         except Exception as e:
             # The cleanup job will release it; never block a new order on this.
-            logger.warning("Could not settle previous attempt %s: %s", previous_razorpay_order_id, e)
+            logger.warning("Could not settle previous attempt %s: %s", previous_order.order_number, e)
+            continue
+
+        if previous_order.payment_status == "paid":
+            # That attempt (or its payment link) was paid after all.
+            return Response({
+                "error": "Your earlier payment for this order went through.",
+                "already_paid": True,
+                "order_number": previous_order.order_number,
+            }, status=409)
 
     try:
         # 🛑 OPEN ATOMIC TRANSACTION FOR DB LOCKING
@@ -450,6 +670,9 @@ def payment_status(request):
             if settled:
                 ensure_payment_captured(settled.get("id"), settled.get("amount"))
                 order = finalize_paid_order(order=order, razorpay_payment_id=settled.get("id"))
+            elif order.payment_link_id:
+                sync_payment_link(order)
+                order.refresh_from_db()
         except Exception as e:
             logger.error("payment_status recheck failed for %s: %s", order.order_number, e)
 
@@ -457,6 +680,7 @@ def payment_status(request):
         "order_number": order.order_number,
         "payment_status": order.payment_status,
         "status": order.status,
+        **payment_link_summary(order),
     })
 
 
@@ -481,13 +705,13 @@ def report_payment_failure(request):
         return Response({"error": "Order not found"}, status=404)
 
     # Trust Razorpay, not the browser: only give up if the gateway agrees there
-    # is no live payment on this order.
+    # is no live payment on this order. If it agrees, text a payment link.
     try:
-        order = settle_abandoned_attempt(order, reason)
+        order = settle_abandoned_attempt(order, reason, offer_payment_link=True)
     except Exception as e:
         logger.error("Failure report recheck failed for %s: %s", order.order_number, e)
 
-    return Response({"payment_status": order.payment_status})
+    return Response({"payment_status": order.payment_status, **payment_link_summary(order)})
 
 
 def _redirect_to_frontend(path, **params):
@@ -558,14 +782,53 @@ def razorpay_callback(request):
         order = Order.objects.filter(razorpay_order_id=failed_razorpay_order_id).first()
         if order:
             try:
-                order = settle_abandoned_attempt(order, reason)
+                order = settle_abandoned_attempt(order, reason, offer_payment_link=True)
             except Exception as e:
                 logger.error("Callback failure recheck failed for %s: %s", order.order_number, e)
 
             if order.payment_status == "paid":
                 return _redirect_to_frontend("/order-success", order=order.order_number)
 
+            if payment_link_summary(order)["payment_link_sent"]:
+                return _redirect_to_frontend("/checkout", payment="failed", link="sent")
+
     return _redirect_to_frontend("/checkout", payment="failed")
+
+
+def payment_link_callback(request):
+    """Razorpay sends the customer here after they pay a texted payment link."""
+    params = {
+        "razorpay_payment_id": request.GET.get("razorpay_payment_id", ""),
+        "payment_link_id": request.GET.get("razorpay_payment_link_id", ""),
+        "payment_link_reference_id": request.GET.get("razorpay_payment_link_reference_id", ""),
+        "payment_link_status": request.GET.get("razorpay_payment_link_status", ""),
+        "razorpay_signature": request.GET.get("razorpay_signature", ""),
+    }
+
+    order = Order.objects.filter(payment_link_id=params["payment_link_id"]).first()
+    if not order:
+        return _redirect_to_frontend("/")
+
+    try:
+        verified = client.utility.verify_payment_link_signature(params) is not False
+    except Exception:
+        verified = False
+
+    if verified and params["payment_link_status"] == "paid":
+        try:
+            record_payment_link_payment(order, params["razorpay_payment_id"])
+        except Exception as e:
+            # The signature proves the payment happened; the webhook and the
+            # cleanup job will finish recording it.
+            logger.exception("Payment link callback finalize failed for %s: %s", order.order_number, e)
+        return _redirect_to_frontend("/order-success", order=order.order_number)
+
+    # Unsigned or unpaid: trust only what Razorpay itself reports.
+    sync_payment_link(order)
+    order.refresh_from_db()
+    if order.payment_status == "paid":
+        return _redirect_to_frontend("/order-success", order=order.order_number)
+    return _redirect_to_frontend("/cart", payment="failed")
 
 
 @csrf_exempt
@@ -597,6 +860,7 @@ def razorpay_webhook(request):
             "payment.captured",
             "payment.failed",
             "order.paid",
+            "payment_link.paid",
             "refund.created",
             "refund.processed",
         ]
@@ -655,23 +919,27 @@ def razorpay_webhook(request):
             except Order.DoesNotExist:
                 return HttpResponse(status=200)
 
-            # A customer can retry inside the same Checkout session, so a failed
-            # attempt is only final if nothing else succeeded on this order.
-            if order.payment_status == "pending":
-                live = [
-                    p for p in client.order.payments(razorpay_order_id).get("items", [])
-                    if p.get("status") in ("captured", "authorized")
-                ]
-                if live:
-                    ensure_payment_captured(live[0].get("id"), live[0].get("amount"))
-                    finalize_paid_order(order=order, razorpay_payment_id=live[0].get("id"))
-                    return HttpResponse(status=200)
+            # Final only if nothing else succeeded on this order. If it really
+            # failed, the customer is texted a payment link. `description` on
+            # the payment is our own checkout text, not the error.
+            settle_abandoned_attempt(
+                order,
+                payment_entity.get("error_description") or payment_entity.get("error_reason") or "Payment failed",
+                offer_payment_link=True,
+            )
 
-                release_order_stock(order)
-                order.refresh_from_db()
-                order.payment_status = "failed"
-                order.payment_error = (payment_entity.get("description") or "")[:255]
-                order.save(update_fields=["payment_status", "payment_error"])
+            return HttpResponse(status=200)
+
+        # -------------------------------
+        # PAYMENT LINK PAID
+        # -------------------------------
+        if event == "payment_link.paid":
+            event_payload = payload.get("payload", {})
+            link_entity = event_payload.get("payment_link", {}).get("entity", {})
+            payment_entity = event_payload.get("payment", {}).get("entity", {})
+
+            order = Order.objects.get(payment_link_id=link_entity.get("id"))
+            record_payment_link_payment(order, payment_entity.get("id"))
 
             return HttpResponse(status=200)
 

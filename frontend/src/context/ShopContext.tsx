@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import { toast } from "react-toastify";
+import type { CartHandoffEntry } from "../utils/checkout";
 
 const API_BASE = "https://api.babatextiles.com/api/products";
 const AUTH_BASE = "https://api.babatextiles.com/api/auth";
@@ -88,6 +89,9 @@ type ShopContextType = {
   shippingTotal: number;
   orderTotal: number;
   clearCart: () => void;
+  // Rebuilds the cart from a checkout hand-off link; returns how many items
+  // could be restored.
+  restoreCart: (entries: CartHandoffEntry[]) => Promise<number>;
 
   wishlist: Product[];
   addToWishlist: (product: Product) => void;
@@ -354,6 +358,7 @@ useEffect(() => {
     setCart([]);
   }, []);
 
+
   useEffect(() => {
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
@@ -392,6 +397,33 @@ useEffect(() => {
       return null;
     }
   }, [mapProducts]);
+
+  const restoreCart = useCallback(async (entries: CartHandoffEntry[]) => {
+    const items: CartItem[] = [];
+
+    for (const entry of entries) {
+      const product = await fetchProductById(entry.productId);
+      const variant = product?.variants.find((v) => v.id === entry.variantId);
+      if (!product || !variant) continue;
+
+      const color =
+        product.available_colors.find((c) => c.id === variant.color?.id) ||
+        (variant.color?.id ? variant.color : null);
+
+      items.push({
+        id: createCartItemId(),
+        product,
+        selectedColor: color,
+        selectedSize: product.has_sizes ? variant.size : "",
+        quantity: entry.quantity,
+        variantId: variant.id,
+        selectedImageUrl: resolveImageForColor(product.images, color),
+      });
+    }
+
+    if (items.length) setCart(items);
+    return items.length;
+  }, [fetchProductById]);
 
   /* ================= DERIVED CART TOTALS ================= */
   const cartTotal = useMemo(() => 
@@ -448,6 +480,7 @@ useEffect(() => {
     shippingTotal,
     orderTotal,
     clearCart,
+    restoreCart,
     wishlist,
     addToWishlist,
     removeFromWishlist,
@@ -470,6 +503,7 @@ useEffect(() => {
     removeFromCart,
     updateCartQuantity,
     clearCart,
+    restoreCart,
     addToWishlist,
     removeFromWishlist,
     isInWishlist

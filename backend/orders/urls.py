@@ -11,6 +11,7 @@ from django.urls import path
 from .views import verify_payment, create_order
 from .views import download_invoices, razorpay_webhook
 from .views import payment_status, report_payment_failure, razorpay_callback
+from .views import payment_link_callback
 
 urlpatterns = [
     #path("create-payment/", create_payment),
@@ -23,6 +24,8 @@ urlpatterns = [
     path("payment-failed/", report_payment_failure),
     # Razorpay posts here in redirect mode (needed for in-app browsers).
     path("payment-callback/", razorpay_callback),
+    # Razorpay sends customers back here after paying a texted payment link.
+    path("payment-link-callback/", payment_link_callback),
     # ✅ Added name="download_invoices" for use in admin.py reverse()
     path("download-invoices/", download_invoices, name="download_invoices"),
 ]

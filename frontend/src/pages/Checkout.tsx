@@ -2,17 +2,35 @@ import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 import type { ProductVariant } from "../context/ShopContext";
-import { ShieldCheck, MapPin, X, AlertCircle } from "lucide-react";
+import { ShieldCheck, MapPin, X, AlertCircle, MessageSquare } from "lucide-react";
 import { toast } from "react-toastify";
 import {
+  CART_HANDOFF_PARAM,
+  checkoutHandoffUrl,
   clearPendingPayment,
+  decodeCartHandoff,
+  isInAppBrowser,
   isMobileDevice,
   loadPendingPayment,
   loadRazorpay,
   savePendingPayment,
 } from "../utils/checkout";
+import InAppCheckoutGate from "../components/InAppCheckoutGate";
 
 const API_BASE = "https://api.babatextiles.com/api";
+
+// What the server reports about an attempt, including whether it texted the
+// customer a payment link after the attempt failed.
+type PaymentOutcome = {
+  payment_status: string;
+  payment_link_sent?: boolean;
+  payment_link_phone?: string;
+  payment_link_valid_minutes?: number;
+};
+
+type LinkNotice = { phone: string; minutes: number };
+
+const IN_APP_CONTINUE_KEY = "inAppCheckoutContinue";
 
 // States and union territories, as sent to India Post on the shipment booking.
 const INDIAN_STATES = [
@@ -112,7 +130,7 @@ function FieldError({ id, message }: { id: string; message: string }) {
 }
 
 export default function Checkout() {
-  const { cart, cartTotal, shippingTotal, orderTotal, clearCart, user } = useShop();
+  const { cart, cartTotal, shippingTotal, orderTotal, clearCart, restoreCart, user } = useShop();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -124,6 +142,25 @@ export default function Checkout() {
 
   // ✅ Synchronous lock so a payment is only ever completed once
   const hasProcessedPayment = useRef(false);
+
+  // Instagram/Facebook's browser: ask the customer to switch before paying.
+  const inAppBrowser = isInAppBrowser();
+  const [continuedInApp, setContinuedInApp] = useState(() => {
+    try {
+      return sessionStorage.getItem(IN_APP_CONTINUE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  // Arrived in Chrome/Safari from a hand-off link: the cart is rebuilt from the
+  // URL first, replacing whatever this browser had in its cart before.
+  const [restoringCart, setRestoringCart] = useState(
+    () => !inAppBrowser && decodeCartHandoff(searchParams.get(CART_HANDOFF_PARAM)).length > 0
+  );
+
+  // Set once the server has texted a payment link for a failed attempt.
+  const [linkNotice, setLinkNotice] = useState<LinkNotice | null>(null);
 
   // ✅ State-based form control
   const [form, setForm] = useState<CheckoutForm>({
@@ -200,10 +237,54 @@ export default function Checkout() {
   }, []);
 
   useEffect(() => {
-    if (cart.length === 0) {
+    if (!restoringCart) return;
+    restoreCart(decodeCartHandoff(searchParams.get(CART_HANDOFF_PARAM))).finally(() => {
+      // Restored once; a reload must not undo later changes.
+      setSearchParams({}, { replace: true });
+      setRestoringCart(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (cart.length === 0 && !restoringCart) {
       navigate("/cart");
     }
-  }, [cart, navigate]);
+  }, [cart, navigate, restoringCart]);
+
+  const handoffUrl = checkoutHandoffUrl(
+    cart.map((item) => ({
+      productId: item.product.id,
+      variantId: item.variantId,
+      quantity: item.quantity,
+    }))
+  );
+  const showInAppGate = inAppBrowser && !continuedInApp && cart.length > 0;
+
+  // Keep the hand-off link in the address bar while the gate shows, so
+  // Instagram's own "Open in external browser" menu carries the cart too.
+  useEffect(() => {
+    if (!showInAppGate) return;
+    window.history.replaceState(window.history.state, "", handoffUrl);
+  }, [showInAppGate, handoffUrl]);
+
+  const continueInApp = () => {
+    try {
+      sessionStorage.setItem(IN_APP_CONTINUE_KEY, "1");
+    } catch {
+      // Shown again on reload; nothing else depends on it.
+    }
+    setContinuedInApp(true);
+  };
+
+  const noteLinkSent = (outcome: PaymentOutcome | null) => {
+    if (!outcome?.payment_link_sent) return false;
+    setLinkNotice({
+      phone: outcome.payment_link_phone || "your phone",
+      minutes: outcome.payment_link_valid_minutes || 30,
+    });
+    return true;
+  };
 
   // Helper to fill form when a saved address is clicked
   const handleSelectAddress = (addr: any) => {
@@ -247,15 +328,19 @@ export default function Checkout() {
   // Ask the server what really happened to a payment. Used whenever the
   // browser loses track of it — the modal was dismissed, or the page was
   // reloaded while the customer was in their UPI app.
-  const resolvePaymentOutcome = async (razorpayOrderId: string, attempts = 3) => {
+  const resolvePaymentOutcome = async (
+    razorpayOrderId: string,
+    attempts = 3
+  ): Promise<PaymentOutcome> => {
+    let last: PaymentOutcome = { payment_status: "pending" };
     for (let attempt = 0; attempt < attempts; attempt++) {
       try {
         const res = await fetch(
           `${API_BASE}/payment-status/?razorpay_order_id=${encodeURIComponent(razorpayOrderId)}`
         );
         if (res.ok) {
-          const data = await res.json();
-          if (data.payment_status !== "pending") return data.payment_status;
+          last = await res.json();
+          if (last.payment_status !== "pending") return last;
         }
       } catch (err) {
         console.error("Payment status check failed", err);
@@ -264,27 +349,27 @@ export default function Checkout() {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
-    return "pending";
+    return last;
   };
 
   // Release an abandoned attempt's stock now rather than when the cleanup job
   // runs. The server checks with Razorpay first, so a payment that actually
   // went through is recorded as paid instead.
-  const reportAbandonedAttempt = async (razorpayOrderId: string, reason: string) => {
+  const reportAbandonedAttempt = async (
+    razorpayOrderId: string,
+    reason: string
+  ): Promise<PaymentOutcome> => {
     try {
       const res = await fetch(`${API_BASE}/payment-failed/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ razorpay_order_id: razorpayOrderId, reason }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        return data.payment_status as string;
-      }
+      if (res.ok) return await res.json();
     } catch (err) {
       console.error("Could not report abandoned payment", err);
     }
-    return "pending";
+    return { payment_status: "pending" };
   };
 
   const completeOrder = (orderNumber: string) => {
@@ -305,10 +390,12 @@ export default function Checkout() {
   useEffect(() => {
     const paymentFailed = searchParams.get("payment") === "failed";
     if (paymentFailed) {
-      toast.error(
-        "Payment could not be completed. If money was deducted, it will be " +
-          "confirmed automatically or refunded within 5–7 working days."
-      );
+      if (searchParams.get("link") !== "sent") {
+        toast.error(
+          "Payment could not be completed. If money was deducted, it will be " +
+            "confirmed automatically or refunded within 5–7 working days."
+        );
+      }
       setSearchParams({}, { replace: true });
     }
 
@@ -318,12 +405,15 @@ export default function Checkout() {
     let cancelled = false;
     setIsProcessing(true);
     resolvePaymentOutcome(pending.razorpayOrderId, 1)
-      .then((status) => {
+      .then((outcome) => {
         if (cancelled) return;
+        const status = outcome.payment_status;
         if (status === "paid") {
           completeOrder(pending.orderNumber);
         } else if (status !== "pending") {
           clearPendingPayment();
+        } else {
+          noteLinkSent(outcome);
         }
         // Still pending: keep it — the next attempt sends it along so the
         // server can release its stock.
@@ -390,6 +480,7 @@ export default function Checkout() {
 
     setIsProcessing(true);
     hasProcessedPayment.current = false; // Reset lock on new attempt
+    setLinkNotice(null); // A new attempt cancels any texted link
 
     // Checked before any stock is reserved.
     if (!(await loadRazorpay())) {
@@ -467,6 +558,13 @@ export default function Checkout() {
 
       const orderResponseData = await orderRes.json();
 
+      // An earlier attempt for this cart (or its texted payment link) was
+      // paid after all.
+      if (orderRes.status === 409 && orderResponseData.already_paid) {
+        completeOrder(orderResponseData.order_number);
+        return;
+      }
+
       if (!orderRes.ok) {
         toast.error(orderResponseData.error || "Order creation failed");
         setIsProcessing(false);
@@ -518,14 +616,14 @@ export default function Checkout() {
             // The customer closed Checkout — but they may have paid in their
             // UPI app first. The server checks with Razorpay before releasing
             // anything, and reports "paid" if the money did arrive.
-            const finalStatus = await reportAbandonedAttempt(
+            const outcome = await reportAbandonedAttempt(
               razorpayOrderId,
               "Customer closed the payment window"
             );
-            if (finalStatus === "paid") {
+            if (outcome.payment_status === "paid") {
               completeOrder(orderNumber);
-            } else {
-              if (finalStatus !== "pending") clearPendingPayment();
+            } else if (!noteLinkSent(outcome)) {
+              if (outcome.payment_status !== "pending") clearPendingPayment();
               toast.warn("Payment window closed. Your order was not placed.");
             }
             setIsProcessing(false);
@@ -533,10 +631,30 @@ export default function Checkout() {
         },
       };
 
-      // UPI apps are only offered on phones. List them explicitly so PhonePe
-      // comes first and Amazon Pay (whose UPI hand-off was timing out) is not
-      // offered; every other method still appears below.
-      if (isMobileDevice()) {
+      if (inAppBrowser) {
+        // Instagram/Facebook's browser blocks the jump to UPI apps, so a UPI
+        // app button would hang on "please wait". Offer only methods that
+        // complete inside this browser.
+        options.config = {
+          display: {
+            blocks: {
+              in_app: {
+                name: "Pay using UPI ID, card or netbanking",
+                instruments: [
+                  { method: "upi", flows: ["collect"] },
+                  { method: "card" },
+                  { method: "netbanking" },
+                ],
+              },
+            },
+            sequence: ["block.in_app"],
+            preferences: { show_default_blocks: false },
+          },
+        };
+      } else if (isMobileDevice()) {
+        // UPI apps are only offered on phones. List them explicitly so PhonePe
+        // comes first and Amazon Pay (whose UPI hand-off was timing out) is not
+        // offered; every other method still appears below.
         options.config = {
           display: {
             blocks: {
@@ -559,11 +677,11 @@ export default function Checkout() {
           response?.error?.description || response?.error?.reason || "Payment failed";
         console.error("Razorpay payment.failed:", response?.error);
 
-        const finalStatus = await reportAbandonedAttempt(razorpayOrderId, description);
-        if (finalStatus === "paid") {
+        const outcome = await reportAbandonedAttempt(razorpayOrderId, description);
+        if (outcome.payment_status === "paid") {
           completeOrder(orderNumber);
-        } else {
-          if (finalStatus !== "pending") clearPendingPayment();
+        } else if (!noteLinkSent(outcome)) {
+          if (outcome.payment_status !== "pending") clearPendingPayment();
           toast.error(`${description} — please try again.`);
         }
         setIsProcessing(false);
@@ -577,6 +695,21 @@ export default function Checkout() {
     }
   };
 
+  if (restoringCart) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center bg-baba-softbg">
+        <div className="text-center">
+          <div className="w-10 h-10 mx-auto rounded-full border-4 border-baba-primary/20 border-t-baba-primary animate-spin" />
+          <p className="mt-3 text-sm text-gray-500">Loading your cart...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (showInAppGate) {
+    return <InAppCheckoutGate handoffUrl={handoffUrl} onContinue={continueInApp} />;
+  }
+
   return (
     <div className="bg-baba-softbg min-h-screen py-10 relative">
       <div className="container mx-auto px-4 max-w-6xl">
@@ -586,6 +719,25 @@ export default function Checkout() {
             <ShieldCheck className="w-4 h-4 text-green-600" /> 256-bit Encrypted Connection
           </div>
         </div>
+
+        {linkNotice && (
+          <div
+            role="status"
+            className="mb-8 bg-teal-50 border border-teal-200 text-teal-900 rounded-xl p-4 flex items-start gap-3"
+          >
+            <MessageSquare className="w-5 h-5 mt-0.5 shrink-0 text-teal-700" />
+            <div className="text-sm">
+              <p className="font-semibold">
+                Payment didn't go through. We've sent a payment link to {linkNotice.phone}.
+              </p>
+              <p className="mt-1 text-teal-800">
+                Open the SMS from Razorpay to complete this order. The link is valid for{" "}
+                {linkNotice.minutes} minutes and your items are held until then. You can also
+                try again below; that cancels the link.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col lg:flex-row gap-10">
           <div className="lg:w-2/3">

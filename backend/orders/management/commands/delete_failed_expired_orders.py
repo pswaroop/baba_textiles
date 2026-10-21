@@ -1,6 +1,7 @@
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from orders.models import Order
 
@@ -20,7 +21,10 @@ class Command(BaseCommand):
 
         statuses = ["failed", "expired"]
 
-        orders = Order.objects.filter(payment_status__in=statuses)
+        # Never delete an order whose payment link can still be paid.
+        orders = Order.objects.filter(payment_status__in=statuses).exclude(
+            payment_link_expires_at__gt=timezone.now()
+        )
 
         total_count = orders.count()
 
