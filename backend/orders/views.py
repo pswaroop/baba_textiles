@@ -84,11 +84,11 @@ def release_order_stock(order):
         return order
 
 
-# How long a texted link stays payable. Enforced by the cleanup job, which
-# cancels the link at Razorpay after this; Razorpay itself only accepts an
-# expiry at least 15 minutes out, so the link is created with that as a
-# backstop.
-PAYMENT_LINK_VALID_MINUTES = 10
+# How long a texted link stays payable: Razorpay's minimum expiry. Enforced
+# by the cleanup job, which cancels the link at Razorpay after this. Razorpay's
+# own expiry is a minute later, as a backstop that still clears its 15 minute
+# minimum by the time the request reaches it.
+PAYMENT_LINK_VALID_MINUTES = 15
 PAYMENT_LINK_RAZORPAY_EXPIRY_MINUTES = 16
 # An attempt still unpaid this long after checkout started gets a link even if
 # Razorpay has not given up on it yet (a UPI app that never opened stays

@@ -121,11 +121,11 @@ class PaymentLinkFlowTests(TestCase):
         self.assertEqual(link["notify"], {"sms": True, "email": False})
         self.assertEqual(link["amount"], 103000)
         self.assertEqual(link["callback_url"], "https://api.example.com/api/payment-link-callback/")
-        # Payable for 10 minutes on our side; Razorpay needs at least 15.
+        # Payable for 15 minutes, Razorpay's minimum.
         minutes_left = (order.payment_link_expires_at - timezone.now()).total_seconds() / 60
-        self.assertAlmostEqual(minutes_left, 10, delta=0.5)
+        self.assertAlmostEqual(minutes_left, 15, delta=0.5)
         self.assertGreaterEqual(link["expire_by"] - timezone.now().timestamp(), 15 * 60)
-        self.assertEqual(res["payment_link_valid_minutes"], 10)
+        self.assertEqual(res["payment_link_valid_minutes"], 15)
 
     def test_no_link_while_payment_still_in_progress(self):
         rid = self.checkout().json()["razorpay_order_id"]
@@ -293,7 +293,7 @@ class PaymentLinkFlowTests(TestCase):
         self.assertEqual(order.payment_error, "Payment was unsuccessful as you could not complete it in time.")
 
     def test_link_expired_on_a_young_order_is_closed_too(self):
-        # Link sent at minute 5, expired at 15: closed before the 18-minute expiry pass.
+        # Link sent at minute 5, expired at 20: closed even though the order is young.
         rid = self.checkout().json()["razorpay_order_id"]
         self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
         self.fail_report(rid)
