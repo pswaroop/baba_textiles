@@ -8,10 +8,13 @@ from django.utils import timezone
 
 from orders.models import Order
 from orders.views import (
+    PAYMENT_LINK_AFTER_MINUTES,
     cancel_payment_link,
     ensure_payment_captured,
     finalize_paid_order,
+    offer_link_for_stalled_attempt,
     payment_link_is_live,
+    settle_abandoned_attempt,
 )
 from products.models import ProductVariant
 
@@ -20,7 +23,10 @@ client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_S
 
 
 class Command(BaseCommand):
-    help = "Release reserved stock for pending orders older than 18 minutes, after rechecking Razorpay"
+    help = (
+        "Text a payment link to attempts unpaid after 5 minutes, and release reserved "
+        "stock for pending orders older than 18 minutes, after rechecking Razorpay"
+    )
 
     # Razorpay gives the customer ~12 minutes to complete a payment, and
     # Checkout is configured to time out at 12 (see Checkout.tsx), so an order
@@ -31,6 +37,9 @@ class Command(BaseCommand):
     EXPIRY_MINUTES = 18
 
     def handle(self, *args, **options):
+        self.offer_payment_links()
+        self.close_expired_payment_links()
+
         expiry_threshold = timezone.now() - timedelta(minutes=self.EXPIRY_MINUTES)
 
         expired_orders = (
@@ -171,3 +180,44 @@ class Command(BaseCommand):
                 f"Skipped: {skipped_count} orders."
             )
         )
+
+    def offer_payment_links(self):
+        """Text a link to customers whose checkout has stalled for 5 minutes."""
+        stalled = Order.objects.filter(
+            payment_status="pending",
+            payment_link_id__isnull=True,
+            razorpay_order_id__isnull=False,
+            stock_released=False,
+            created_at__lt=timezone.now() - timedelta(minutes=PAYMENT_LINK_AFTER_MINUTES),
+            created_at__gte=timezone.now() - timedelta(minutes=self.EXPIRY_MINUTES),
+        )
+        sent = 0
+        for order in stalled:
+            try:
+                order = offer_link_for_stalled_attempt(order)
+                if order.payment_link_id:
+                    sent += 1
+            except Exception as e:
+                self.stderr.write(f"⚠️ Payment link offer failed for {order.order_number}: {e}")
+        if sent:
+            self.stdout.write(f"📩 Texted payment links for {sent} stalled orders.")
+
+    def close_expired_payment_links(self):
+        """Cancel links past their 10 minutes and hand their stock back."""
+        expired = Order.objects.filter(
+            payment_status="pending",
+            payment_link_id__isnull=False,
+            payment_link_expires_at__lt=timezone.now(),
+        )
+        for order in expired:
+            try:
+                # Cancels the link at Razorpay; records the order as paid
+                # instead if the link or the checkout payment went through.
+                # No reason given: keeps the original payment error.
+                order = settle_abandoned_attempt(order)
+                if order.payment_status == "paid":
+                    self.stdout.write(
+                        self.style.WARNING(f"Recovered order paid by payment link: {order.order_number}")
+                    )
+            except Exception as e:
+                self.stderr.write(f"⚠️ Closing payment link failed for {order.order_number}: {e}")

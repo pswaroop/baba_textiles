@@ -121,6 +121,11 @@ class PaymentLinkFlowTests(TestCase):
         self.assertEqual(link["notify"], {"sms": True, "email": False})
         self.assertEqual(link["amount"], 103000)
         self.assertEqual(link["callback_url"], "https://api.example.com/api/payment-link-callback/")
+        # Payable for 10 minutes on our side; Razorpay needs at least 15.
+        minutes_left = (order.payment_link_expires_at - timezone.now()).total_seconds() / 60
+        self.assertAlmostEqual(minutes_left, 10, delta=0.5)
+        self.assertGreaterEqual(link["expire_by"] - timezone.now().timestamp(), 15 * 60)
+        self.assertEqual(res["payment_link_valid_minutes"], 10)
 
     def test_no_link_while_payment_still_in_progress(self):
         rid = self.checkout().json()["razorpay_order_id"]
@@ -281,8 +286,87 @@ class PaymentLinkFlowTests(TestCase):
         Order.objects.filter(id=order.id).update(payment_link_expires_at=timezone.now() - timedelta(minutes=1))
         call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
         order.refresh_from_db()
-        self.assertEqual(order.payment_status, "expired")
+        self.assertEqual(order.payment_status, "failed")
+        self.assertEqual(self.rzp.links[order.payment_link_id]["status"], "cancelled")
         self.assertEqual(self.reserved(), 0)
+        # The original gateway error is kept.
+        self.assertEqual(order.payment_error, "Payment was unsuccessful as you could not complete it in time.")
+
+    def test_link_expired_on_a_young_order_is_closed_too(self):
+        # Link sent at minute 5, expired at 15: closed before the 18-minute expiry pass.
+        rid = self.checkout().json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
+        self.fail_report(rid)
+        order = Order.objects.get(razorpay_order_id=rid)
+        Order.objects.filter(id=order.id).update(
+            created_at=timezone.now() - timedelta(minutes=15),
+            payment_link_expires_at=timezone.now() - timedelta(seconds=30),
+        )
+
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "failed")
+        self.assertEqual(self.reserved(), 0)
+
+    def age(self, rid, minutes):
+        Order.objects.filter(razorpay_order_id=rid).update(created_at=timezone.now() - timedelta(minutes=minutes))
+
+    def test_stuck_upi_payment_gets_link_after_5_minutes(self):
+        rid = self.checkout().json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "created"}]  # PhonePe never opened
+
+        self.age(rid, 4)
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+        self.rzp.payment_link.create.assert_not_called()
+
+        self.age(rid, 5.5)
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+        order = Order.objects.get(razorpay_order_id=rid)
+        self.assertIsNotNone(order.payment_link_id)
+        self.assertEqual(order.payment_status, "pending")
+        self.assertEqual(order.payment_error, "Payment not completed within 5 minutes")
+        self.assertEqual(self.reserved(), 1)
+
+        # Razorpay later times the UPI attempt out: still one SMS, link kept.
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
+        self.webhook("payment.failed", {"payment": {"entity": {"order_id": rid, "error_description": "timed out"}}})
+        order.refresh_from_db()
+        self.assertEqual(self.rzp.payment_link.create.call_count, 1)
+        self.assertEqual(self.rzp.links[order.payment_link_id]["status"], "created")
+        self.assertEqual(order.payment_status, "pending")
+
+    def test_stuck_upi_payment_completing_late_cancels_link(self):
+        rid = self.checkout().json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "created"}]
+        self.age(rid, 6)
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+        order = Order.objects.get(razorpay_order_id=rid)
+
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "captured"}]
+        with self.captureOnCommitCallbacks(execute=True):
+            self.api.get(f"/api/payment-status/?razorpay_order_id={rid}")
+
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "paid")
+        self.assertEqual(self.rzp.links[order.payment_link_id]["status"], "cancelled")
+
+    def test_checkout_never_started_gets_link_after_5_minutes(self):
+        rid = self.checkout().json()["razorpay_order_id"]  # no payments at all
+        self.age(rid, 6)
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+        order = Order.objects.get(razorpay_order_id=rid)
+        self.assertIsNotNone(order.payment_link_id)
+        self.assertEqual(order.payment_error, "Payment not started within 5 minutes")
+
+    def test_stalled_check_records_payment_instead_of_texting(self):
+        rid = self.checkout().json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "captured"}]
+        self.age(rid, 6)
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+        order = Order.objects.get(razorpay_order_id=rid)
+        self.assertEqual(order.payment_status, "paid")
+        self.rzp.payment_link.create.assert_not_called()
 
     def test_cleanup_recovers_link_paid_without_webhook(self):
         rid = self.checkout().json()["razorpay_order_id"]

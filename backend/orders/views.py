@@ -84,7 +84,16 @@ def release_order_stock(order):
         return order
 
 
-PAYMENT_LINK_VALID_MINUTES = 30
+# How long a texted link stays payable. Enforced by the cleanup job, which
+# cancels the link at Razorpay after this; Razorpay itself only accepts an
+# expiry at least 15 minutes out, so the link is created with that as a
+# backstop.
+PAYMENT_LINK_VALID_MINUTES = 10
+PAYMENT_LINK_RAZORPAY_EXPIRY_MINUTES = 16
+# An attempt still unpaid this long after checkout started gets a link even if
+# Razorpay has not given up on it yet (a UPI app that never opened stays
+# "in progress" for ~12 minutes).
+PAYMENT_LINK_AFTER_MINUTES = 5
 # Caps how many links one phone number can be texted, so a customer retrying
 # over and over is not flooded with SMS.
 PAYMENT_LINK_MAX_PER_PHONE_PER_DAY = 3
@@ -152,6 +161,7 @@ def send_payment_link(order, reason=""):
             return payment_link_is_live(locked)
 
         expires_at = timezone.now() + timedelta(minutes=PAYMENT_LINK_VALID_MINUTES)
+        razorpay_expires_at = timezone.now() + timedelta(minutes=PAYMENT_LINK_RAZORPAY_EXPIRY_MINUTES)
         try:
             link = client.payment_link.create({
                 "amount": amount_in_paise,
@@ -167,7 +177,7 @@ def send_payment_link(order, reason=""):
                 },
                 "notify": {"sms": True, "email": False},
                 "reminder_enable": False,
-                "expire_by": int(expires_at.timestamp()),
+                "expire_by": int(razorpay_expires_at.timestamp()),
                 "notes": {"order_number": locked.order_number},
                 "callback_url": f"{settings.API_URL}/api/payment-link-callback/",
                 "callback_method": "get",
@@ -245,6 +255,36 @@ def record_payment_link_payment(order, razorpay_payment_id):
         return order
 
     return finalize_paid_order(order=order, razorpay_payment_id=razorpay_payment_id)
+
+
+def offer_link_for_stalled_attempt(order):
+    """Text a link for an attempt that is going nowhere, without waiting for
+    Razorpay to time it out.
+
+    Called by the cleanup job once checkout has been open for
+    PAYMENT_LINK_AFTER_MINUTES. If a payment did go through it is recorded
+    instead. The attempt itself is left open: if its UPI payment completes
+    after all, finalizing the order cancels the link.
+    """
+    if order.payment_status != "pending" or order.payment_link_id or not order.razorpay_order_id:
+        return order
+
+    payments = client.order.payments(order.razorpay_order_id).get("items", [])
+    settled = next(
+        (p for p in payments if p.get("status") in ("captured", "authorized")),
+        None,
+    )
+    if settled:
+        ensure_payment_captured(settled.get("id"), settled.get("amount"))
+        return finalize_paid_order(order=order, razorpay_payment_id=settled.get("id"))
+
+    reason = (
+        "Payment not completed within 5 minutes"
+        if payments else "Payment not started within 5 minutes"
+    )
+    send_payment_link(order, reason)
+    order.refresh_from_db()
+    return order
 
 
 def settle_abandoned_attempt(order, reason="", offer_payment_link=False):
