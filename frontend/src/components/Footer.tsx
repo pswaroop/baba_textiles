@@ -36,6 +36,7 @@ const Footer = () => {
                 href="https://www.instagram.com/babatextiles_srikakulam?igsh=MWJ2NTQ3Zm1udGp3Ng%3D%3D&utm_source=qr"
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Baba Textiles on Instagram"
                 className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-baba-accent hover:text-baba-primary transition-all duration-300"
               >
                 <Instagram className="h-5 w-5" />
@@ -111,7 +112,7 @@ const Footer = () => {
             >
               <img
                 src="/staffarc-logo.webp"
-                alt="StaffArc"
+                alt=""
                 loading="lazy"
                 decoding="async"
                 width={20}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { Plus, MapPin, Pencil, X, Phone, User, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-toastify";
@@ -14,6 +15,7 @@ type Address = {
 };
 
 export default function Addresses() {
+  usePageMeta({ title: "My Addresses", noindex: true });
   const token = localStorage.getItem("token");
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [showForm, setShowForm] = useState(false);

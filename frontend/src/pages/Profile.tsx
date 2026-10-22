@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { useShop } from "../context/ShopContext";
 import { useNavigate } from "react-router-dom";
 import {
@@ -26,6 +27,7 @@ interface Order {
 }
 
 export default function Profile() {
+  usePageMeta({ title: "My Account", noindex: true });
   const { user, logout } = useShop();
   const navigate = useNavigate();
 

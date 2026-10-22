@@ -1,8 +1,10 @@
 import { useShop } from "../context/ShopContext";
+import { usePageMeta } from "../utils/pageMeta";
 import ProductCard from "../components/ProductCard";
 import { Link } from "react-router-dom";
 
 export default function Wishlist() {
+  usePageMeta({ title: "Your Wishlist", noindex: true });
   const { wishlist } = useShop();
 
   return (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { Link } from "react-router-dom";
 import { ArrowRight, Instagram } from "lucide-react";
 import { useShop } from "../context/ShopContext";
@@ -31,6 +32,7 @@ const CategorySkeleton = () => (
 );
 
 export default function Home() {
+  usePageMeta({ path: "/" });
   const { latestProducts, popularProducts, isLoading: isShopLoading } = useShop();
 
   const [categories, setCategories] = useState<any[]>([]);
@@ -207,7 +209,7 @@ export default function Home() {
                           src={category.image_small || category.image}
                           srcSet={categorySrcSet(category.image, category.image_small)}
                           sizes="(min-width: 768px) 208px, 128px"
-                          alt={category.name}
+                          alt=""
                           loading="lazy"
                           decoding="async"
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -228,7 +230,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="flex justify-between mb-8 items-end">
             <h2 className="font-serif text-3xl font-bold">Latest Arrivals</h2>
-            <Link to="/shop?tag=latest" className="flex items-center gap-1 text-[#C6A75E] hover:text-[#a88a44] transition-colors font-medium">
+            <Link to="/shop?tag=latest" className="flex items-center gap-1 text-[#7C5E1E] hover:text-baba-primary transition-colors font-medium">
               View All <ArrowRight size={16} />
             </Link>
           </div>
@@ -248,7 +250,7 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="flex justify-between mb-8 items-end">
             <h2 className="font-serif text-3xl font-bold">Popular Collection</h2>
-            <Link to="/shop?tag=popular" className="flex items-center gap-1 text-[#C6A75E] hover:text-[#a88a44] transition-colors font-medium">
+            <Link to="/shop?tag=popular" className="flex items-center gap-1 text-[#7C5E1E] hover:text-baba-primary transition-colors font-medium">
               View All <ArrowRight size={16} />
             </Link>
           </div>

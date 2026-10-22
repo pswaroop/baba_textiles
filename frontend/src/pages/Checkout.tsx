@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 import type { ProductVariant } from "../context/ShopContext";
@@ -133,6 +134,7 @@ function FieldError({ id, message }: { id: string; message: string }) {
 }
 
 export default function Checkout() {
+  usePageMeta({ title: "Secure Checkout", noindex: true });
   const { cart, cartTotal, shippingTotal, orderTotal, clearCart, restoreCart, pruneCart, user } = useShop();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -580,14 +582,23 @@ export default function Checkout() {
         checkout_mode: mode,
       };
 
-      const orderRes = await fetch(`${API_BASE}/create-order/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify(orderData),
-      });
+      const postOrder = (authToken: string | null) =>
+        fetch(`${API_BASE}/create-order/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken && { Authorization: `Bearer ${authToken}` }),
+          },
+          body: JSON.stringify(orderData),
+        });
+
+      let orderRes = await postOrder(token);
+      if (orderRes.status === 401 && token) {
+        // Expired or no-longer-valid login: drop it and place the order as a
+        // guest rather than blocking the payment.
+        localStorage.removeItem("token");
+        orderRes = await postOrder(null);
+      }
 
       const orderResponseData = await orderRes.json();
 

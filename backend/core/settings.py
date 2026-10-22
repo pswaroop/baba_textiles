@@ -276,6 +276,15 @@ LOGGING = {
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
+# HTTPS only. nginx always forwards X-Forwarded-Proto: https, so this never
+# loops; it guards any request that reaches Django another way.
+SECURE_SSL_REDIRECT = True
+# Browsers remember to use HTTPS for these hosts (6 months; subdomains are
+# not included so a future HTTP-only subdomain is not locked out).
+SECURE_HSTS_SECONDS = 60 * 60 * 24 * 182
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 CSRF_COOKIE_SECURE = True
 CSRF_TRUSTED_ORIGINS = [
     'https://babatextiles.com',

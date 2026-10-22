@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useShop } from "../context/ShopContext";
@@ -102,6 +103,15 @@ export default function ProductDetail() {
 
   const product =
     listedProduct ?? (fetched && fetched.id === id ? fetched.product ?? undefined : undefined);
+
+  usePageMeta({
+    title: product ? product.name : undefined,
+    description: product
+      ? `${product.name} – ₹${product.price}${product.category_name ? ` · ${product.category_name}` : ""} at Baba Textiles. ${product.description || ""}`
+      : undefined,
+    path: `/product/${id}`,
+    image: product?.images?.[0]?.thumbnail || product?.images?.[0]?.image || null,
+  });
 
   // On a hard refresh, `products` starts empty and only fills in after the
   // ShopContext fetch resolves. We distinguish "still fetching" from
@@ -474,7 +484,7 @@ export default function ProductDetail() {
       <div className="container mx-auto px-4 max-w-6xl">
 
         {/* Breadcrumb */}
-        <nav className="flex items-center text-sm text-gray-500 mb-8 overflow-x-auto whitespace-nowrap pb-2">
+        <nav aria-label="Breadcrumb" className="flex items-center text-sm text-gray-600 mb-8 overflow-x-auto whitespace-nowrap pb-2">
           <Link to="/" className="hover:text-black transition-colors">
             Home
           </Link>
@@ -559,6 +569,7 @@ export default function ProductDetail() {
                   <>
                     <button
                       onClick={goToPrev}
+                      aria-label="Previous photo"
                       className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur p-2.5 rounded-full shadow hover:bg-white transition z-30 text-gray-700"
                       type="button"
                     >
@@ -566,6 +577,7 @@ export default function ProductDetail() {
                     </button>
                     <button
                       onClick={goToNext}
+                      aria-label="Next photo"
                       className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur p-2.5 rounded-full shadow hover:bg-white transition z-30 text-gray-700"
                       type="button"
                     >
@@ -679,7 +691,7 @@ export default function ProductDetail() {
                 </p>
                 {Number(product.discount_percentage) > 0 && (
                   <>
-                    <p className="text-lg text-gray-400 line-through mb-1">
+                    <p className="text-lg text-gray-500 line-through mb-1">
                       ₹{Number(product.original_price).toLocaleString("en-IN")}
                     </p>
                     <span className="bg-green-100 text-green-700 font-bold text-xs px-2.5 py-1 rounded tracking-wide mb-1.5 ml-2 border border-green-200">
@@ -701,12 +713,12 @@ export default function ProductDetail() {
                 {/* Color picker */}
                 {availableColors.length > 0 && (
                   <div>
-                    <h3 className="mb-3 font-bold text-gray-900 uppercase text-xs tracking-widest">
+                    <h2 className="mb-3 font-bold text-gray-900 uppercase text-xs tracking-widest">
                       Color{" "}
                       <span className="text-gray-500 normal-case font-normal ml-2">
                         — {selectedColor?.name || "Please select"}
                       </span>
-                    </h3>
+                    </h2>
                     <div className="flex gap-3 flex-wrap">
                       {availableColors.map((color: ProductColor) => {
                         const isColorDead = isColorOutOfStock(color);
@@ -748,9 +760,9 @@ export default function ProductDetail() {
                 {/* Size picker */}
                 {hasSizes && selectedColor && (
                   <div>
-                    <h3 className="mb-3 font-bold text-gray-900 uppercase text-xs tracking-widest">
+                    <h2 className="mb-3 font-bold text-gray-900 uppercase text-xs tracking-widest">
                       Size
-                    </h3>
+                    </h2>
                     {allVariantsForColor.length === 0 ? (
                       <p className="text-sm text-red-600 bg-red-50 px-4 py-3 rounded-lg border border-red-100 inline-block">
                         No sizes mapped for this color.
@@ -809,9 +821,9 @@ export default function ProductDetail() {
                 {/* Quantity */}
                 {selectedVariant && selectedVariantStock > 0 && (
                   <div>
-                    <h3 className="mb-3 font-bold text-gray-900 uppercase text-xs tracking-widest">
+                    <h2 className="mb-3 font-bold text-gray-900 uppercase text-xs tracking-widest">
                       Quantity
-                    </h3>
+                    </h2>
                     <div className="relative w-28">
                       <select
                         value={quantity}

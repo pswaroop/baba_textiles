@@ -115,7 +115,7 @@ const ProductCard = ({ product, priority = false, sizes = CARD_SIZES }: ProductC
             </p>
 
             {Number(product.discount_percentage) > 0 && (
-              <p className="text-xs md:text-sm text-gray-400 line-through">
+              <p className="text-xs md:text-sm text-gray-500 line-through">
                 ₹{Number(product.original_price).toLocaleString("en-IN")}
               </p>
             )}
@@ -128,7 +128,7 @@ const ProductCard = ({ product, priority = false, sizes = CARD_SIZES }: ProductC
           </div>
 
           {isOutOfStock && (
-            <span className="px-2 py-0.5 text-[10px] md:text-xs font-bold bg-red-50 text-red-600 rounded border border-red-100 whitespace-nowrap">
+            <span className="px-2 py-0.5 text-[10px] md:text-xs font-bold bg-red-50 text-red-700 rounded border border-red-100 whitespace-nowrap">
               SOLD OUT
             </span>
           )}

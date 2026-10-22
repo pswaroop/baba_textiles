@@ -892,3 +892,31 @@ class ResponsiveImageTests(TestCase):
         call_command("compress_images", stdout=StringIO())
         img.refresh_from_db()
         self.assertEqual((self.width(img.small), self.width(img.medium)), (300, 400))
+
+
+class SitemapAndSecurityTests(TestCase):
+    def test_sitemap_lists_pages_categories_and_visible_products(self):
+        from django.core.cache import cache
+        cache.clear()
+        cat = Category.objects.create(name="Sarees", slug="sarees")
+        shown = Product.objects.create(name="A", code="A1", category=cat, description="x", original_price=1, price=1)
+        hidden = Product.objects.create(name="B", code="B1", category=cat, description="x", original_price=1, price=1, is_active=False)
+        r = self.client.get("/sitemap.xml")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/xml")
+        body = r.content.decode()
+        self.assertIn("<loc>https://babatextiles.com/</loc>", body)
+        self.assertIn("<loc>https://babatextiles.com/shop?category=sarees</loc>", body)
+        self.assertIn(f"<loc>https://babatextiles.com/product/{shown.id}</loc>", body)
+        self.assertNotIn(f"/product/{hidden.id}<", body)
+        # a new product appears straight away (cache dropped on save)
+        new = Product.objects.create(name="C", code="C1", category=cat, description="x", original_price=1, price=1)
+        self.assertIn(f"/product/{new.id}<", self.client.get("/sitemap.xml").content.decode())
+
+    @override_settings(SECURE_SSL_REDIRECT=True)
+    def test_https_headers(self):
+        r = self.client.get("/api/products/categories/", secure=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("max-age=", r["Strict-Transport-Security"])
+        self.assertEqual(r["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(self.client.get("/api/products/categories/").status_code, 301)  # plain HTTP redirected

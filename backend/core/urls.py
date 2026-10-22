@@ -19,9 +19,13 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from products.sitemap import sitemap_xml
+
 urlpatterns = [
     #path('_nested_admin/', include('nested_admin.urls')),
     path('admin/', admin.site.urls),
+    # babatextiles.com/sitemap.xml is proxied here by nginx.
+    path('sitemap.xml', sitemap_xml, name='sitemap'),
     path('api/products/', include('products.urls')),
     path("api/auth/", include("users.urls")),
     

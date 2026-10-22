@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +7,7 @@ import { useShop } from "../context/ShopContext";
 import { useGoogleLogin } from '@react-oauth/google';
 import { toast } from "react-toastify";
 export default function Auth() {
+  usePageMeta({ title: "Login or Sign Up", noindex: true });
   const navigate = useNavigate();
   const { setUser } = useShop();
 
@@ -168,7 +170,7 @@ if (isLogin) {
           <button
             type="button"
             onClick={() => setIsLogin(!isLogin)}
-            className="text-baba-accent ml-2 font-medium hover:underline"
+            className="text-[#7C5E1E] ml-2 font-medium hover:underline"
           >
             {isLogin ? "Sign Up" : "Login"}
           </button>

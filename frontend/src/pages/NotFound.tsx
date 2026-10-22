@@ -1,8 +1,10 @@
 import React from 'react';
+import { usePageMeta } from "../utils/pageMeta";
     import { Link } from 'react-router-dom';
     import { Home } from 'lucide-react';
 
     export default function NotFound() {
+      usePageMeta({ title: "Page Not Found", noindex: true });
       return (
         <div className="min-h-[80vh] flex flex-col items-center justify-center bg-baba-background px-4">
           <h1 className="text-9xl font-serif font-bold text-baba-primary mb-4">404</h1>

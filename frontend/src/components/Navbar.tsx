@@ -140,7 +140,7 @@ const Navbar: React.FC = () => {
 
           {/* Right Icons */}
           <div className="flex items-center gap-6">
-            <Link to="/wishlist" onClick={handleNavClick} className="relative">
+            <Link to="/wishlist" onClick={handleNavClick} className="relative" aria-label={`Wishlist${wishlist.length ? `, ${wishlist.length} items` : ""}`}>
               <Heart size={22} className={wishlist.length > 0 ? "fill-red-500 text-red-500" : ""} />
               {wishlist.length > 0 && (
                 <span className="absolute -top-2 -right-2 bg-baba-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">
@@ -149,7 +149,7 @@ const Navbar: React.FC = () => {
               )}
             </Link>
 
-            <Link to="/cart" onClick={handleNavClick} className="relative">
+            <Link to="/cart" onClick={handleNavClick} className="relative" aria-label={`Cart${cartItemCount ? `, ${cartItemCount} items` : ""}`}>
               <ShoppingBag size={22} />
               {cartItemCount > 0 && (
                 <span className="absolute -top-2 -right-2 bg-baba-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">
@@ -158,7 +158,7 @@ const Navbar: React.FC = () => {
               )}
             </Link>
 
-            <button onClick={() => setIsOpen(!isOpen)} className="md:hidden">
+            <button onClick={() => setIsOpen(!isOpen)} className="md:hidden" aria-label={isOpen ? "Close menu" : "Open menu"} aria-expanded={isOpen}>
               <Menu size={26} />
             </button>
           </div>
@@ -187,6 +187,7 @@ const Navbar: React.FC = () => {
               <button
                 onClick={() => setIsOpen(false)}
                 className="mb-8 text-baba-primary"
+                aria-label="Close menu"
               >
                 <X size={24} />
               </button>

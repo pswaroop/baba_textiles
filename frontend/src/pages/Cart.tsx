@@ -1,10 +1,12 @@
 import React, { useState } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { smallestProductImage } from "../utils/images";
 import { Link, useNavigate } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 import { Trash2, ArrowRight, Minus, Plus, Info } from "lucide-react";
 
 export default function Cart() {
+  usePageMeta({ title: "Your Cart", noindex: true });
   const { cart, removeFromCart, updateCartQuantity, cartTotal } = useShop();
   const [promoCode, setPromoCode] = useState("");
   const [discount, setDiscount] = useState(0);

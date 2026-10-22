@@ -2,6 +2,7 @@
 // import { CheckCircle, FileText } from "lucide-react";
 
 // export default function OrderSuccess() {
+  usePageMeta({ title: "Order Confirmed", noindex: true });
 
 //   const { orderId } = useParams();
 //   const navigate = useNavigate();
@@ -63,6 +64,7 @@
 //   );
 // }
 import { useEffect } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { CheckCircle, FileText } from "lucide-react";
 import { useShop } from "../context/ShopContext";

@@ -13,8 +13,9 @@ def _drop_product_list_cache(sender=None, update_fields=None, **kwargs):
     # each time would defeat the cache. Stock shown may lag up to a minute.
     if update_fields and set(update_fields) <= STOCK_ONLY:
         return
+    from .sitemap import SITEMAP_CACHE_KEY
     from .views import ALL_TAGGED_CACHE_KEY
-    cache.delete(ALL_TAGGED_CACHE_KEY)
+    cache.delete_many([ALL_TAGGED_CACHE_KEY, SITEMAP_CACHE_KEY])
 
 
 # Any change to what the shop lists makes the cached product list stale.

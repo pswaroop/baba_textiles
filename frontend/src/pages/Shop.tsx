@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react";
+import { usePageMeta } from "../utils/pageMeta";
 import { useSearchParams } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 import ProductCard from "../components/ProductCard";
@@ -144,6 +145,24 @@ export default function Shop() {
     );
     return matchedCategory || selectedCategory;
   }, [allCategories, selectedCategory]);
+
+  const shopTitle =
+    activeCategoryLabel !== "All"
+      ? activeCategoryLabel
+      : selectedCollection
+        ? `${selectedCollection.charAt(0).toUpperCase()}${selectedCollection.slice(1)} Collection`
+        : "Shop All";
+  usePageMeta({
+    title: shopTitle,
+    description: `${shopTitle} at Baba Textiles, Srikakulam: sarees, sets, cord sets and more at budget-friendly prices, shipped all over India.`,
+    path:
+      activeCategoryLabel !== "All"
+        ? `/shop?category=${encodeURIComponent(selectedCategory)}`
+        : selectedCollection
+          ? `/shop?tag=${encodeURIComponent(selectedCollection)}`
+          : "/shop",
+    noindex: !!urlSearch,
+  });
 
   // ✅ 4. Master filtering logic (Optimized Loops)
   const filteredProducts = useMemo(() => {
@@ -428,6 +447,9 @@ export default function Shop() {
               </select>
             </div>
           </div>
+
+          {/* Heading for the product cards (h3), for screen readers. */}
+          <h2 className="sr-only">Products</h2>
 
           {/* THE GRID LOGIC */}
           {showSkeletons ? (

@@ -1,6 +1,12 @@
 import React from 'react';
+import { usePageMeta } from "../utils/pageMeta";
 
     export default function About() {
+      usePageMeta({
+        title: "About Us",
+        description: "Baba Textiles, GT Road, Srikakulam: budget-friendly ethnic wear and wholesale clothing. Best rates and best quality is our motto.",
+        path: "/about",
+      });
       return (
         <div className="bg-baba-softbg min-h-screen">
           <div className="bg-baba-primary py-24 px-4 text-center">
@@ -29,7 +35,7 @@ import React from 'react';
                 <p className="text-gray-600 leading-relaxed text-lg">
                   Our extensive collection spans across men's, women's, and kids' wear, meticulously sourced to ensure our partners get the finest fabrics. From grand royal silks to comfortable everyday cottons, every thread weaves a story of trust and durability.
                 </p>
-                <blockquote className="border-l-4 border-baba-accent pl-4 italic text-gray-500 font-serif text-xl my-8">
+                <blockquote className="border-l-4 border-baba-accent pl-4 italic text-gray-600 font-serif text-xl my-8">
                   "Our commitment is simple: We provide the best rates so our wholesale partners can thrive, and the best quality so their customers keep coming back."
                 </blockquote>
               </div>
