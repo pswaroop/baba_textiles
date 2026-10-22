@@ -4,25 +4,31 @@ import { motion } from "framer-motion";
 import type { Product } from "../context/ShopContext";
 import { ShoppingBag, Heart, Image as ImageIcon } from "lucide-react";
 import { useShop } from "../context/ShopContext";
+import { CARD_SIZES, productSrcSet } from "../utils/images";
 
 type ProductCardProps = {
   product: Product;
   priority?: boolean;
+  // How wide the card is displayed (the `sizes` attribute); defaults to the shop grid.
+  sizes?: string;
 };
 
-const ProductCard = ({ product, priority = false }: ProductCardProps) => {
+const ProductCard = ({ product, priority = false, sizes = CARD_SIZES }: ProductCardProps) => {
   const { addToWishlist, removeFromWishlist, isInWishlist } = useShop();
 
-  const { cardImage, cardThumb } = useMemo(() => {
+  const { cardImage, cardSrcSet } = useMemo(() => {
     const firstValid = product.images?.find((img) => img?.image);
-    const full = firstValid?.image || "/placeholder.png";
     // Real 400px/800px variants — not a placebo query-string trick. Grid
     // cards render at very different widths depending on the page (Home/
     // Wishlist go up to 4 columns, Shop stays at 2 columns until 1024px,
     // meaning the same card can be under 200px or over 450px wide), so a
     // single fixed-size source is either wasteful or blurry depending on
     // layout. srcSet + sizes lets the browser pick per case.
-    return { cardImage: full, cardThumb: firstValid?.thumbnail || full };
+    // src is the fallback for browsers without srcset support.
+    return {
+      cardImage: firstValid?.thumbnail || firstValid?.image || "/placeholder.png",
+      cardSrcSet: productSrcSet(firstValid),
+    };
   }, [product.images]);
 
   const isOutOfStock =
@@ -53,12 +59,8 @@ const ProductCard = ({ product, priority = false }: ProductCardProps) => {
         */}
         <img
           src={cardImage}
-          srcSet={
-            cardThumb !== cardImage
-              ? `${cardThumb} 400w, ${cardImage} 800w`
-              : undefined
-          }
-          sizes="(min-width: 1024px) 30vw, 48vw"
+          srcSet={cardSrcSet}
+          sizes={sizes}
           alt={product.name}
           loading={priority ? "eager" : "lazy"}
           fetchPriority={priority ? "high" : "auto"}

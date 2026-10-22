@@ -4,6 +4,7 @@ import { useShop } from "../context/ShopContext";
 import type { ProductVariant } from "../context/ShopContext";
 import { ShieldCheck, MapPin, X, AlertCircle, MessageSquare, ExternalLink } from "lucide-react";
 import { toast } from "react-toastify";
+import { smallestProductImage } from "../utils/images";
 import {
   CART_HANDOFF_PARAM,
   checkoutHandoffUrl,
@@ -983,7 +984,7 @@ export default function Checkout() {
 
               <div className="space-y-4 mb-6 max-h-60 overflow-y-auto pr-2">
                 {cart.map((item) => {
-                  const image = item.selectedImageUrl || item.product.images?.[0]?.thumbnail || item.product.images?.[0]?.image || "/placeholder.png";
+                  const image = item.selectedImageUrl || smallestProductImage(item.product.images?.[0]);
 
                   return (
                     <div key={item.id} className="flex gap-4">

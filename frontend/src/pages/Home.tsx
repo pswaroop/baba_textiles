@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Instagram } from "lucide-react";
 import { useShop } from "../context/ShopContext";
 import ProductCard from "../components/ProductCard";
+import { categorySrcSet, heroSrcSet } from "../utils/images";
 import { AnimatePresence, motion } from "framer-motion";
 
 const API_BASE = "https://api.babatextiles.com/api/products";
@@ -33,7 +34,10 @@ export default function Home() {
   const { latestProducts, popularProducts, isLoading: isShopLoading } = useShop();
 
   const [categories, setCategories] = useState<any[]>([]);
+  // Hero images are shown at 100-160 CSS px: `heroImages` holds the 320px
+  // copies (the src), `heroSrcSets` both sizes for higher-density screens.
   const [heroImages, setHeroImages] = useState<string[]>([]);
+  const [heroSrcSets, setHeroSrcSets] = useState<(string | undefined)[]>([]);
   const [current, setCurrent] = useState(0);
   
   // Independent loading states so one slow API doesn't block the whole page
@@ -66,8 +70,9 @@ export default function Home() {
       .then((data) => {
         if (!isMounted) return;
         
-        const images = data.map((item: any) => item.image);
+        const images = data.map((item: any) => item.image_small || item.image);
         setHeroImages(images);
+        setHeroSrcSets(data.map((item: any) => heroSrcSet(item.image, item.image_small)));
         setIsHeroLoading(false);
         if (images[0]) {
     const existing = document.querySelector('link[data-hero-preload]');
@@ -129,6 +134,8 @@ export default function Home() {
                     <motion.img
                       key={current}
                       src={heroImages[current]}
+                      srcSet={heroSrcSets[current]}
+                      sizes="100px"
                       fetchPriority={current === 0 ? "high" : "auto"}
                       loading={current === 0 ? "eager" : "lazy"} 
                       initial={{ opacity: 0, x: 60 }}
@@ -166,6 +173,8 @@ export default function Home() {
                 <div className="w-40 h-60 overflow-hidden rounded shadow-xl bg-gray-800">
                   <img
                     src={img}
+                    srcSet={heroSrcSets[i]}
+                    sizes="160px"
                     loading={i < 2 ? "eager" : "lazy"} 
                     fetchPriority={i === 0 ? "high" : "auto"}
                     className="w-full h-full object-cover hover:scale-110 transition duration-500"
@@ -193,7 +202,9 @@ export default function Home() {
                     <Link to={`/shop?category=${category.slug}`}>
                       <div className="w-32 h-32 md:w-52 md:h-52 rounded-full overflow-hidden shadow-sm border border-gray-200 group-hover:border-[#C6A75E] transition-colors">
                         <img
-                          src={category.image}
+                          src={category.image_small || category.image}
+                          srcSet={categorySrcSet(category.image, category.image_small)}
+                          sizes="(min-width: 768px) 208px, 128px"
                           alt={category.name}
                           loading="lazy"
                           decoding="async"

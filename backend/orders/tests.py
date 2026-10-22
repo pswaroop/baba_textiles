@@ -789,9 +789,72 @@ class PerformanceTests(TestCase):
         hero = HeroImage(); hero.image.save("old.jpeg", ContentFile(buf.getvalue()), save=False)
         HeroImage.objects.bulk_create([hero])  # as if uploaded before compression existed
         out = StringIO(); call_command("compress_images", "--dry-run", stdout=out)
-        self.assertIn("Would change 1 files", out.getvalue())
+        self.assertIn("Would change 2 files", out.getvalue())  # resize + small copy
         call_command("compress_images", stdout=StringIO())
         h = HeroImage.objects.get()
         self.assertTrue(h.image.name.endswith(".webp"))
         with Image.open(h.image.path) as im:
             self.assertEqual(im.width, 640)
+        with Image.open(h.image_small.path) as im:
+            self.assertEqual(im.width, 320)
+
+
+class ResponsiveImageTests(TestCase):
+    """Every image is stored in the widths the storefront lists in srcset."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def upload(self, name, fmt, size):
+        from io import BytesIO
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = BytesIO(); Image.new("RGB", size, "green").save(buf, format=fmt)
+        return SimpleUploadedFile(name, buf.getvalue())
+
+    def width(self, field):
+        from PIL import Image
+        with Image.open(field.path) as im:
+            return im.width
+
+    def test_product_image_gets_three_widths_and_api_lists_them(self):
+        from products.models import ProductImage, ProductTag
+        cat = Category.objects.create(name="Sets", slug="sets")
+        p = Product.objects.create(name="Set", code="S1", category=cat, description="x", original_price=1, price=1)
+        p.tags.add(ProductTag.objects.create(name="latest"))
+        img = ProductImage.objects.create(product=p, image=self.upload("photo.jpg", "JPEG", (3024, 4032)))
+        self.assertEqual((self.width(img.image), self.width(img.thumbnail), self.width(img.small)), (1000, 600, 300))
+        api_img = APIClient().get(f"/api/products/{p.id}/").json()["images"][0]
+        self.assertTrue(api_img["small"].endswith("_w300.webp"))
+        self.assertTrue(api_img["thumbnail"] and api_img["image"])
+        listed = APIClient().get("/api/products/all-tagged/").json()["latest"][0]["images"][0]
+        self.assertEqual(listed["small"], api_img["small"])
+
+    def test_category_and_hero_get_small_copies(self):
+        from products.models import HeroImage
+        cat = Category.objects.create(name="Nighty", slug="nighty", image=self.upload("n.png", "PNG", (1200, 1600)))
+        self.assertEqual((self.width(cat.image), self.width(cat.image_small)), (450, 240))
+        hero = HeroImage.objects.create(image=self.upload("h.jpg", "JPEG", (2268, 4032)))
+        self.assertEqual((self.width(hero.image), self.width(hero.image_small)), (640, 320))
+        self.assertIn("image_small", APIClient().get("/api/products/categories/").json()[0])
+        self.assertTrue(APIClient().get("/api/products/hero/").json()[0]["image_small"].endswith("_w320.webp"))
+
+    def test_resaving_without_new_image_does_not_rebuild_small(self):
+        cat = Category.objects.create(name="Tops", slug="tops", image=self.upload("t.png", "PNG", (800, 800)))
+        first = cat.image_small.name
+        cat.name = "Tops & Tunics"; cat.save()
+        self.assertEqual(cat.image_small.name, first)
+
+    def test_backfill_creates_missing_small_copies(self):
+        from io import StringIO
+        from products.models import ProductImage
+        cat = Category.objects.create(name="Sets", slug="sets")
+        p = Product.objects.create(name="Set", code="S1", category=cat, description="x", original_price=1, price=1)
+        img = ProductImage.objects.create(product=p, image=self.upload("photo.jpg", "JPEG", (1200, 1600)))
+        ProductImage.objects.filter(pk=img.pk).update(small=None)  # as for images uploaded before this
+        out = StringIO(); call_command("compress_images", "--dry-run", stdout=out)
+        self.assertIn("small 300px copy", out.getvalue())
+        call_command("compress_images", stdout=StringIO())
+        img.refresh_from_db()
+        self.assertEqual(self.width(img.small), 300)

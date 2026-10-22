@@ -4,8 +4,11 @@ from django.core.management.base import BaseCommand
 
 from products.models import (
     CATEGORY_MAX_WIDTH,
+    CATEGORY_SMALL_MAX_WIDTH,
     HERO_MAX_WIDTH,
+    HERO_SMALL_MAX_WIDTH,
     PRODUCT_MAIN_MAX_WIDTH,
+    PRODUCT_SMALL_MAX_WIDTH,
     PRODUCT_THUMB_MAX_WIDTH,
     Category,
     HeroImage,
@@ -13,6 +16,7 @@ from products.models import (
     compress_image_to_webp,
     image_width,
     make_thumbnail_webp,
+    save_small_copy,
 )
 
 
@@ -33,6 +37,9 @@ class Command(BaseCommand):
         self._fix(Category.objects.all(), "category", CATEGORY_MAX_WIDTH)
         self._fix(ProductImage.objects.all(), "product image", PRODUCT_MAIN_MAX_WIDTH)
         self._thumbnails()
+        self._small_copies(HeroImage, "image", "image_small", HERO_SMALL_MAX_WIDTH)
+        self._small_copies(Category, "image", "image_small", CATEGORY_SMALL_MAX_WIDTH)
+        self._small_copies(ProductImage, "image", "small", PRODUCT_SMALL_MAX_WIDTH)
         verb = "Would change" if self.dry else "Changed"
         self.stdout.write(self.style.SUCCESS(f"{verb} {self.changed} files."))
 
@@ -82,3 +89,21 @@ class Command(BaseCommand):
             stem = Path(img.image.name).stem
             img.thumbnail.save(f"{stem}_thumb.webp", thumb, save=False)
             ProductImage.objects.filter(pk=img.pk).update(thumbnail=img.thumbnail.name)
+
+    def _small_copies(self, model, source, target, max_width):
+        """Build the small srcset size wherever it is missing."""
+        for obj in model.objects.all():
+            src, dst = getattr(obj, source), getattr(obj, target)
+            if not src or not src.name or (dst and dst.name):
+                continue
+            self.changed += 1
+            if self.dry:
+                self.stdout.write(f"{model.__name__} {obj.pk}: small {max_width}px copy of {src.name}")
+                continue
+            if save_small_copy(src, dst, max_width):
+                model.objects.filter(pk=obj.pk).update(**{target: dst.name})
+            else:
+                self.stdout.write(self.style.ERROR(f"Failed small copy {model.__name__} {obj.pk}"))
+        if model is HeroImage and not self.dry:
+            from django.core.cache import cache
+            cache.delete("hero_images_api_cache")

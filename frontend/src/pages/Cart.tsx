@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { smallestProductImage } from "../utils/images";
 import { Link, useNavigate } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 import { Trash2, ArrowRight, Minus, Plus, Info } from "lucide-react";
@@ -61,7 +62,7 @@ export default function Cart() {
               
               // FIXED: Read image from product.images instead of selectedColor
               // Fallback to the first product image if nothing is found
-              const image = item.selectedImageUrl || item.product.images?.[0]?.thumbnail || item.product.images?.[0]?.image || "/placeholder.png";
+              const image = item.selectedImageUrl || smallestProductImage(item.product.images?.[0]);
 
               return (
                 <div key={item.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex gap-6 relative">

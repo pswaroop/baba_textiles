@@ -129,10 +129,35 @@ def image_width(image_field):
 
 
 # Sizes the storefront actually displays (with room for high-density screens).
-PRODUCT_MAIN_MAX_WIDTH = 1000
-PRODUCT_THUMB_MAX_WIDTH = 600   # cards show ~180-280 CSS px
+# Each image is stored in a few widths; the frontend lists them in srcset so
+# a phone downloads the smallest one that is still sharp at its display size.
+PRODUCT_MAIN_MAX_WIDTH = 1000   # product page main image
+PRODUCT_THUMB_MAX_WIDTH = 600   # cards (~180-280 CSS px) on high-density phones
+PRODUCT_SMALL_MAX_WIDTH = 300   # cart/checkout/gallery tiles, low-density cards
 CATEGORY_MAX_WIDTH = 450        # circles of up to ~208 CSS px
+CATEGORY_SMALL_MAX_WIDTH = 240  # 128 CSS px circles on phones
 HERO_MAX_WIDTH = 640            # tiles of 160x240 CSS px
+HERO_SMALL_MAX_WIDTH = 320      # 100x140 phone carousel, 160px tiles at 2x
+
+
+def save_small_copy(source_field, target_field, max_width, quality=76):
+    """Write a downscaled WEBP copy of ``source_field`` into ``target_field``
+    (save=False; the caller saves the model). Returns True on success."""
+    if not source_field or not source_field.name:
+        return False
+    small = make_thumbnail_webp(source_field, max_width=max_width, quality=quality)
+    if small is None:
+        return False
+    target_field.save(f"{Path(source_field.name).stem}_w{max_width}.webp", small, save=False)
+    return True
+
+
+def stored_image_changed(instance, field_name="image"):
+    """True when ``field_name`` differs from what is saved in the database."""
+    if instance._state.adding or not instance.pk:
+        return True
+    old = type(instance).objects.filter(pk=instance.pk).values_list(field_name, flat=True).first()
+    return old != getattr(instance, field_name).name
 
 
 def make_thumbnail_webp(image_field, *, max_width=PRODUCT_THUMB_MAX_WIDTH, quality=78):
@@ -158,6 +183,7 @@ class Category(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True, blank=True)
     image = models.ImageField(upload_to="categories/", blank=True, null=True)
+    image_small = models.ImageField(upload_to="categories/small/", blank=True, null=True, editable=False)
     order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -170,9 +196,14 @@ class Category(models.Model):
         # Category images are only ever displayed as a small circular
         # thumbnail (max ~208px on screen), so 450px covers retina displays
         # with headroom instead of shipping an 800px original every time.
+        changed = stored_image_changed(self)
         if self.image:
             compress_image_to_webp(self.image, max_width=CATEGORY_MAX_WIDTH, quality=78)
-            
+            if changed or not self.image_small:
+                save_small_copy(self.image, self.image_small, CATEGORY_SMALL_MAX_WIDTH)
+        elif changed:
+            self.image_small = None
+
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -250,6 +281,8 @@ class ProductImage(models.Model):
     # (homepage cards, cart, checkout) so those views don't have to download
     # the full 800px detail-page image just to render a ~150-300px thumbnail.
     thumbnail = models.ImageField(upload_to="products/thumbs/", blank=True, null=True, editable=False)
+    # Smaller still: cart/checkout/gallery tiles and low-density screens.
+    small = models.ImageField(upload_to="products/small/", blank=True, null=True, editable=False)
     color = models.ForeignKey(
         "ProductColor",
         on_delete=models.SET_NULL,
@@ -294,6 +327,7 @@ class ProductImage(models.Model):
             if thumb is not None:
                 stem = Path(self.image.name).stem
                 self.thumbnail.save(f"{stem}_thumb.webp", thumb, save=False)
+            save_small_copy(self.image, self.small, PRODUCT_SMALL_MAX_WIDTH)
 
         super().save(*args, **kwargs)
 
@@ -374,6 +408,7 @@ class ProductVariant(models.Model):
 
 class HeroImage(models.Model):
     image = models.ImageField(upload_to="hero/")
+    image_small = models.ImageField(upload_to="hero/small/", blank=True, null=True, editable=False)
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -396,6 +431,8 @@ class HeroImage(models.Model):
         # biggest contributor to a slow homepage.
         if image_changed and self.image:
             compress_image_to_webp(self.image, max_width=HERO_MAX_WIDTH, quality=78)
+        if self.image and (image_changed or not self.image_small):
+            save_small_copy(self.image, self.image_small, HERO_SMALL_MAX_WIDTH)
 
         super().save(*args, **kwargs)
         cache.delete("hero_images_api_cache")

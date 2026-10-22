@@ -13,6 +13,8 @@ export type ProductImage = {
   // Small (~400px) variant for grid/list tiles (cards, cart, checkout).
   // Falls back to `image` when absent (e.g. older rows not yet backfilled).
   thumbnail: string | null;
+  // Smallest stored width (300px): cart/checkout tiles and srcset.
+  small?: string | null;
   color: number | null;
 };
 
@@ -118,10 +120,10 @@ function resolveImageForColor(
     const matched = images.find(
       (img) => img.color !== null && img.color === colorId,
     );
-    if (matched) return matched.thumbnail || matched.image;
+    if (matched) return matched.small || matched.thumbnail || matched.image;
   }
 
-  return images[0].thumbnail || images[0].image || "/placeholder.png";
+  return images[0].small || images[0].thumbnail || images[0].image || "/placeholder.png";
 }
 
 // crypto.randomUUID() is missing on older Android WebViews and iOS < 15.4
@@ -196,6 +198,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({
                 id: img.id,
                 image: img.image,
                 thumbnail: img.thumbnail ?? null,
+                small: img.small ?? null,
                 color: img.color ?? null,
               }))
             : [],

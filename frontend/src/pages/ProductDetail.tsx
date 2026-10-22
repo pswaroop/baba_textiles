@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useShop } from "../context/ShopContext";
+import { productLargeSrcSet, productSrcSet, smallestProductImage } from "../utils/images";
 import type { Product, ProductColor, ProductVariant } from "../context/ShopContext";
 import {
   ShoppingBag,
@@ -19,6 +20,9 @@ type NormalizedImage = {
   id: number | string;
   url: string;
   thumbUrl: string;
+  smallUrl: string;
+  largeSrcSet?: string;   // main photo: 600w/1000w
+  tileSrcSet?: string;    // gallery strip: 300w/600w
   colorId: string | null;
 };
 
@@ -30,7 +34,14 @@ type NormalizedImage = {
 //   • idx 1 → fetchpriority="auto"  (next slide — nice to have ready)
 // Everything else loads lazily via loading="lazy" on thumbnail <img> tags,
 // so bandwidth goes where it matters most.
-function preloadImages(urls: string[], count = 2): () => void {
+// Width of the main photo: full screen on phones, half the page from 1024px.
+const MAIN_IMAGE_SIZES = "(min-width: 1024px) 45vw, 100vw";
+
+function preloadImages(
+  urls: string[],
+  count = 2,
+  srcSets?: Map<string, string | undefined>,
+): () => void {
   const links: HTMLLinkElement[] = [];
 
   urls.slice(0, count).forEach((src, idx) => {
@@ -39,6 +50,12 @@ function preloadImages(urls: string[], count = 2): () => void {
     link.rel = "preload";
     link.as = "image";
     link.href = src;
+    const srcSet = srcSets?.get(src);
+    if (srcSet) {
+      // Preload the size the <img> will pick, not the largest one.
+      link.setAttribute("imagesrcset", srcSet);
+      link.setAttribute("imagesizes", MAIN_IMAGE_SIZES);
+    }
     link.setAttribute("fetchpriority", idx === 0 ? "high" : "auto");
     document.head.appendChild(link);
     links.push(link);
@@ -113,6 +130,9 @@ export default function ProductDetail() {
         id: img.id ?? idx,
         url: img.image ?? "",
         thumbUrl: img.thumbnail || img.image || "",
+        smallUrl: smallestProductImage(img),
+        largeSrcSet: productLargeSrcSet(img),
+        tileSrcSet: productSrcSet({ small: img.small, thumbnail: img.thumbnail }),
         colorId:
           img.color !== null && img.color !== undefined
             ? String(img.color)
@@ -121,7 +141,7 @@ export default function ProductDetail() {
       .filter((img) => !!img.url);
     return imgs.length
       ? imgs
-      : [{ id: "placeholder", url: "/placeholder.png", thumbUrl: "/placeholder.png", colorId: null }];
+      : [{ id: "placeholder", url: "/placeholder.png", thumbUrl: "/placeholder.png", smallUrl: "/placeholder.png", colorId: null }];
   }, [product]);
 
   // ─── Step 2: Color mapping flags ──────────────────────────────────────────
@@ -151,6 +171,12 @@ export default function ProductDetail() {
 
   const safeHeroIndex = Math.min(heroIndex, Math.max(0, heroImages.length - 1));
   const heroImageSrc = heroImages[safeHeroIndex] || "/placeholder.png";
+  // Same choice of sizes as the <img> below, so a preload is never wasted.
+  const srcSetByUrl = useMemo(
+    () => new Map(normalizedImages.map((img) => [img.url, img.largeSrcSet])),
+    [normalizedImages],
+  );
+  const heroSrcSet = srcSetByUrl.get(heroImageSrc);
 
   // ─── Preload first 2 images when product loads ────────────────────────────
   // Only the hero + next slide get preloaded. Remaining thumbnails load lazily
@@ -163,8 +189,8 @@ export default function ProductDetail() {
 
     if (!allUrls.length) return;
 
-    return preloadImages(allUrls, 2);
-  }, [normalizedImages]);
+    return preloadImages(allUrls, 2, srcSetByUrl);
+  }, [normalizedImages, srcSetByUrl]);
 
   // ─── Color matching ───────────────────────────────────────────────────────
   const colorsMatch = useCallback(
@@ -490,6 +516,9 @@ export default function ProductDetail() {
                 */}
                 <img
                   src={heroImageSrc}
+                  // Zoom (2.5x) needs the full-size photo, so drop srcset then.
+                  srcSet={isZoomed ? undefined : heroSrcSet}
+                  sizes={MAIN_IMAGE_SIZES}
                   alt={product.name}
                   fetchPriority="high"
                   loading="eager"
@@ -581,7 +610,9 @@ export default function ProductDetail() {
                           and there's no point fetching them upfront.
                         */}
                         <img
-                          src={img.thumbUrl}
+                          src={img.smallUrl}
+                          srcSet={img.tileSrcSet}
+                          sizes="96px"
                           alt={`${product.name} view ${index + 1}`}
                           className="w-full h-full object-cover"
                           loading={index < 2 ? "eager" : "lazy"}
