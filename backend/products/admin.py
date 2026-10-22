@@ -11,6 +11,7 @@ from .models import (
     HeroImage,
     ProductColor,
 )
+from orders.models import OrderItem
 
 
 def image_preview_tag(image_field, width=70, height=70):
@@ -114,6 +115,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "code",
+        "is_active",
         "category",
         "has_sizes",
         "original_price",
@@ -122,12 +124,15 @@ class ProductAdmin(admin.ModelAdmin):
         "shipping_charge",
         "created_at",
     )
+    list_editable = ("is_active",)
     list_filter = (
+        "is_active",
         "category",
         "has_sizes",
         "tags",
         "created_at",
     )
+    actions = ["hide_from_shop", "show_in_shop"]
     search_fields = (
         "name",
         "code",
@@ -143,11 +148,38 @@ class ProductAdmin(admin.ModelAdmin):
     save_on_top = True
     date_hierarchy = "created_at"
 
+    @admin.action(description="Hide from shop")
+    def hide_from_shop(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated} product(s) hidden from the shop.")
+
+    @admin.action(description="Show in shop")
+    def show_in_shop(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated} product(s) shown in the shop.")
+
+    def has_delete_permission(self, request, obj=None):
+        # Deleting breaks customers' carts and shared links (a re-created
+        # product gets new ids). Staff hide products instead; only a superuser
+        # may delete, and never a product that has been ordered.
+        if not request.user.is_superuser:
+            return False
+        if obj is not None and OrderItem.objects.filter(variant__product=obj).exists():
+            return False
+        return True
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("delete_selected", None)
+        return actions
+
     fieldsets = (
         ("Basic Information", {
             "fields": (
                 "name",
                 "code",
+                "is_active",
                 "category",
                 "description",
                 "tags",

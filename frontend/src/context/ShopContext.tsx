@@ -322,10 +322,16 @@ useEffect(() => {
       );
 
       if (existing) {
+        // Adding the same size again must not go past what is in stock, or
+        // the order is rejected at payment.
+        const available = product.variants.find((v) => v.id === variantId)?.stock;
+        let next = existing.quantity + quantity;
+        if (available !== undefined && available > 0 && next > available) {
+          next = available;
+          toast.warn(`Only ${available} in stock. Your cart has ${available} of this item.`);
+        }
         return prev.map((item) =>
-          item.id === existing.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item,
+          item.id === existing.id ? { ...item, quantity: next } : item,
         );
       }
 

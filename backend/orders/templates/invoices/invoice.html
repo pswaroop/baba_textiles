@@ -163,16 +163,16 @@
                     {% for item in order.items.all %}
                     <tr>
                         <td>
-                            <div class="bold">{{ item.variant.product.name|upper }}</div>
+                            <div class="bold">{{ item.product_name|default:"Deleted product"|upper }}</div>
                             <!-- ✅ ADDED VARIANT COLOR & SIZE HERE -->
                             <div class="variant-details">
-                                {% if item.variant.color %}CLR: {{ item.variant.color.name|upper }}{% endif %}
-                                {% if item.variant.size and item.variant.size != "0" %} | SZ: {{ item.variant.size }}{% endif %}
+                                {% if item.color_name %}CLR: {{ item.color_name|upper }}{% endif %}
+                                {% if item.size %} | SZ: {{ item.size }}{% endif %}
                             </div>
                             <div style="font-size:10px; margin-top:2px;">HSN: 6204 | GST: 5%</div>
                         </td>
                         <td class="text-right">{{ item.quantity }}</td>
-                        <td class="text-right bold">₹{% widthratio item.variant.product.price 1 item.quantity %}</td>
+                        <td class="text-right bold">₹{% widthratio item.invoice_unit_price 1 item.quantity %}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

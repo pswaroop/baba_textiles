@@ -148,7 +148,10 @@ class Command(BaseCommand):
                             continue
 
                     if not locked_order.stock_released:
-                        items = sorted(order.items.all(), key=lambda i: i.variant.id)
+                        items = sorted(
+                            (i for i in order.items.all() if i.variant_id),
+                            key=lambda i: i.variant_id,
+                        )
 
                         for item in items:
                             variant = (

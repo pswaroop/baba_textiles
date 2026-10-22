@@ -37,7 +37,7 @@ from rest_framework import serializers
 from .models import Order, OrderItem
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    variant_name = serializers.ReadOnlyField(source='variant.name')
+    variant_name = serializers.ReadOnlyField(source='display_name')
 
     class Meta:
         model = OrderItem

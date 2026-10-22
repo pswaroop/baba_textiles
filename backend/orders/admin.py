@@ -36,6 +36,8 @@ class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     autocomplete_fields = ["variant"]
+    fields = ["variant", "quantity", "product_name", "color_name", "size", "unit_price"]
+    readonly_fields = ["product_name", "color_name", "size", "unit_price"]
     show_change_link = True
 
 
@@ -218,7 +220,7 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ["id", "order", "variant", "quantity"]
-    search_fields = ["order__order_number", "variant__product__name"]
+    list_display = ["id", "order", "display_name", "quantity"]
+    search_fields = ["order__order_number", "product_name", "product_code", "variant__product__name"]
     list_select_related = ["order", "variant", "variant__product"]
     list_per_page = 25

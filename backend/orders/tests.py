@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from orders.models import Order
+from orders.models import Order, OrderItem
 from products.models import Category, Product, ProductColor, ProductVariant, SIZE_CHOICES
 
 
@@ -528,3 +528,84 @@ class PaymentLinkFlowTests(TestCase):
         call_command("repair_reserved_stock", "--apply", stdout=StringIO())
         self.variant.refresh_from_db(); self.other_variant.refresh_from_db()
         self.assertEqual((self.variant.reserved_stock, self.other_variant.reserved_stock), (2, 0))
+
+
+class ProductDeletionSafetyTests(TestCase):
+    """Deleting or hiding products must never damage past orders."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        self.cat = Category.objects.create(name="Kurtis", slug="kurtis")
+        self.product = Product.objects.create(
+            name="Feeding Cordset", code="FC1", category=self.cat, description="x",
+            original_price=600, price=520, shipping_charge=30,
+        )
+        self.color = ProductColor.objects.create(name="Blue", color="#0000FF")
+        self.variant = ProductVariant.objects.create(product=self.product, color=self.color, size="XL", stock=4)
+        self.order = Order.objects.create(customer_name="A", phone="6303570160", payment_status="paid", total_amount=550)
+        self.item = OrderItem.objects.create(order=self.order, variant=self.variant, quantity=2)
+        User = get_user_model()
+        self.staff = User.objects.create_user(username="staff", password="x", is_staff=True)
+        self.superuser = User.objects.create_superuser(username="boss", password="x", email="b@x.com")
+
+    def test_item_keeps_product_details(self):
+        self.item.refresh_from_db()
+        self.assertEqual(
+            (self.item.product_name, self.item.product_code, self.item.color_name, self.item.size, self.item.unit_price),
+            ("Feeding Cordset", "FC1", "Blue", "XL", 520),
+        )
+
+    def test_deleting_product_keeps_order_items(self):
+        self.product.delete()
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.variant)
+        self.assertEqual(self.order.items.count(), 1)
+        self.assertEqual(self.item.display_name, "Feeding Cordset — Blue — XL")
+        self.assertEqual(self.item.invoice_unit_price, 520)
+
+    def test_orders_with_deleted_products_still_work(self):
+        from orders.views import release_order_stock, finalize_paid_order
+        pending = Order.objects.create(customer_name="B", phone="6303570161", payment_status="pending", total_amount=550)
+        OrderItem.objects.create(order=pending, variant=self.variant, quantity=1)
+        self.product.delete()
+        release_order_stock(pending)  # must not crash on an item with no size
+        pending.refresh_from_db()
+        self.assertTrue(pending.stock_released)
+        from shipping.operations import _package_dimensions_for_order
+        weight, *_ = _package_dimensions_for_order(self.order)  # India Post booking
+        self.assertGreater(weight, 0)
+
+    def test_invoice_renders_for_deleted_product(self):
+        from django.template.loader import render_to_string
+        self.product.delete()
+        self.order.taxable_amount = self.order.cgst = self.order.sgst = 0
+        html = render_to_string("invoices/invoice.html", {"orders": [self.order]})
+        self.assertIn("FEEDING CORDSET", html)
+        self.assertIn("SZ: XL", html)
+
+    def test_hidden_product_leaves_shop_but_not_orders(self):
+        self.product.is_active = False
+        self.product.save()
+        api = APIClient()
+        self.assertEqual(api.get(f"/api/products/{self.product.id}/").status_code, 404)
+        r = api.post("/api/create-order/", {"items": [{"variant": self.variant.id, "quantity": 1}], "phone": "6303570160"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.order.items.count(), 1)
+
+    def test_only_superuser_can_delete_and_never_an_ordered_product(self):
+        from django.contrib.admin.sites import site
+        from django.test import RequestFactory
+        admin_obj = site._registry[Product]
+        rf = RequestFactory()
+        staff_req = rf.get("/"); staff_req.user = self.staff
+        boss_req = rf.get("/"); boss_req.user = self.superuser
+        unordered = Product.objects.create(name="New", code="N1", category=self.cat, description="x", original_price=1, price=1)
+        self.assertFalse(admin_obj.has_delete_permission(staff_req, unordered))
+        self.assertTrue(admin_obj.has_delete_permission(boss_req, unordered))
+        self.assertFalse(admin_obj.has_delete_permission(boss_req, self.product))
+        self.assertNotIn("delete_selected", admin_obj.get_actions(staff_req))
+
+    def test_category_with_products_cannot_be_deleted(self):
+        from django.db.models import ProtectedError
+        with self.assertRaises(ProtectedError):
+            self.cat.delete()

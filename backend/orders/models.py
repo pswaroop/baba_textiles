@@ -118,13 +118,24 @@ class OrderItem(models.Model):
         db_index=True,
     )
 
+    # Cleared (not cascaded) if the size or product is ever deleted, so past
+    # orders keep their items. The fields below keep what was bought.
     variant = models.ForeignKey(
         "products.ProductVariant",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         db_index=True,
     )
 
     quantity = models.PositiveIntegerField()
+
+    # Copy of the product as it was when ordered.
+    product_name = models.CharField(max_length=255, blank=True, default="")
+    product_code = models.CharField(max_length=50, blank=True, default="")
+    color_name = models.CharField(max_length=100, blank=True, default="")
+    size = models.CharField(max_length=10, blank=True, default="")
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         indexes = [
@@ -132,5 +143,36 @@ class OrderItem(models.Model):
             models.Index(fields=["variant"]),
         ]
 
+    def fill_snapshot(self):
+        """Copy the product details from the variant (call before saving)."""
+        v = self.variant
+        if v is None:
+            return
+        self.product_name = v.product.name
+        self.product_code = v.product.code
+        self.color_name = v.color.name if v.color_id else ""
+        self.size = v.size if v.size and v.size != "0" else ""
+        self.unit_price = v.product.price
+
+    def save(self, *args, **kwargs):
+        if self.variant_id and not self.product_name:
+            self.fill_snapshot()
+        super().save(*args, **kwargs)
+
+    @property
+    def display_name(self):
+        parts = [self.product_name or (self.variant.product.name if self.variant else "Deleted product")]
+        if self.color_name:
+            parts.append(self.color_name)
+        if self.size:
+            parts.append(self.size)
+        return " — ".join(parts)
+
+    @property
+    def invoice_unit_price(self):
+        if self.unit_price is not None:
+            return self.unit_price
+        return self.variant.product.price if self.variant else 0
+
     def __str__(self):
-        return f"{self.variant} x {self.quantity}"
+        return f"{self.display_name} x {self.quantity}"

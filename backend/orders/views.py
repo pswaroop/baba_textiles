@@ -72,7 +72,11 @@ def release_order_stock(order):
         if order.stock_released or order.payment_status == "paid":
             return order
 
-        items = sorted(order.items.select_related("variant").all(), key=lambda i: i.variant.id)
+        # Items whose size was deleted have no stock left to hand back.
+        items = sorted(
+            order.items.select_related("variant").filter(variant__isnull=False),
+            key=lambda i: i.variant_id,
+        )
 
         for item in items:
             variant = ProductVariant.objects.select_for_update().get(id=item.variant.id)
@@ -381,7 +385,10 @@ def finalize_paid_order(
         )
 
         # Sort variants by ID to prevent database deadlocks when locking multiple rows
-        sorted_items = sorted(order_items, key=lambda item: item.variant.id)
+        sorted_items = sorted(
+            (item for item in order_items if item.variant_id),
+            key=lambda item: item.variant_id,
+        )
 
         # If cleanup already expired this order its reservation is gone, so only
         # the physical stock still has to move.
@@ -537,8 +544,9 @@ def create_order(request):
                 variant = (
                     ProductVariant.objects
                     .select_for_update()
-                    .select_related("product")
-                    .get(id=variant_id)
+                    .select_related("product", "color")
+                    # A hidden product can no longer be bought.
+                    .get(id=variant_id, product__is_active=True)
                 )
 
                 # ✅ Check against available stock (physical stock - currently reserved)
@@ -554,11 +562,9 @@ def create_order(request):
                 variant.reserved_stock += quantity
                 variant.save(update_fields=["reserved_stock"])
 
-                OrderItem.objects.create(
-                    order=order,
-                    variant=variant,
-                    quantity=quantity
-                )
+                order_item = OrderItem(order=order, variant=variant, quantity=quantity)
+                order_item.fill_snapshot()
+                order_item.save()
 
                 price = Decimal(str(variant.product.price))
                 shipping = Decimal(str(variant.product.shipping_charge or 0))
@@ -1112,7 +1118,7 @@ def user_orders(request):
             "total_amount": str(order.total_amount),
             "items": [
                 {
-                    "variant_name": str(item.variant),
+                    "variant_name": item.display_name,
                     "quantity": item.quantity
                 }
                 for item in order.items.all()

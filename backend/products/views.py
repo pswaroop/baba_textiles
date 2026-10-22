@@ -46,8 +46,10 @@ class ProductDetailView(PublicCacheMixin, generics.RetrieveAPIView):
     serializer_class = ProductSerializer
     permission_classes = [AllowAny]
     cache_timeout = 60 * 2
+    # Hidden products answer 404, so the storefront drops them from carts.
     queryset = (
         Product.objects
+        .filter(is_active=True)
         .select_related("category")
         .prefetch_related("tags", "images", "variants", "variants__color")
     )
@@ -62,7 +64,7 @@ class ProductByTagView(PublicCacheMixin, generics.ListAPIView):
 
         return (
             Product.objects
-            .filter(tags__name=tag_name)
+            .filter(tags__name=tag_name, is_active=True)
             .select_related("category")
             .prefetch_related(
                 "tags",
@@ -142,7 +144,7 @@ class ValidateStockView(APIView):
                 )
 
             try:
-                variant = ProductVariant.objects.get(id=variant_id)
+                variant = ProductVariant.objects.get(id=variant_id, product__is_active=True)
                 
                 # ✅ Compute available stock by subtracting what's currently reserved
                 available_stock = max(0, variant.stock - variant.reserved_stock)
@@ -179,7 +181,7 @@ def all_products_view(request):
     for tag in tags:
         qs = (
             Product.objects
-            .filter(tags__name=tag)
+            .filter(tags__name=tag, is_active=True)
             .select_related("category")
             .prefetch_related("tags", "images", "variants", "variants__color")
             .annotate(total_stock=Coalesce(Sum("variants__stock"), 0))

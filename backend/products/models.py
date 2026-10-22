@@ -176,8 +176,13 @@ class ProductColor(models.Model):
 class Product(models.Model):
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=50, unique=True)
-    category = models.ForeignKey("Category", on_delete=models.CASCADE)
+    # PROTECT: deleting a category must not silently delete its products.
+    category = models.ForeignKey("Category", on_delete=models.PROTECT)
     description = models.TextField()
+
+    # Hide a product instead of deleting it: it disappears from the shop but
+    # keeps its ids, so carts, shared links and past orders keep working.
+    is_active = models.BooleanField("Show in shop", default=True, db_index=True)
 
     shipping_charge = models.DecimalField(max_digits=10, decimal_places=2, default=50.00)
     has_sizes = models.BooleanField(default=True)

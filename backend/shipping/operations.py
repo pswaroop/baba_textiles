@@ -37,6 +37,10 @@ def _package_dimensions_for_order(order):
         )
 
     for item in items:
+        if item.variant is None:
+            # Product deleted since: book it at the default unit weight.
+            total_weight += settings.INDIAPOST_DEFAULT_WEIGHT_GRAMS * item.quantity
+            continue
         product = item.variant.product
         unit_weight = product.weight_grams or settings.INDIAPOST_DEFAULT_WEIGHT_GRAMS
         total_weight += unit_weight * item.quantity
