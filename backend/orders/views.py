@@ -110,7 +110,7 @@ def payment_link_eligible(order):
     return order.opened_in_instagram or order.opened_on_android
 # Caps how many links one phone number can be texted, so a customer retrying
 # over and over is not flooded with SMS.
-PAYMENT_LINK_MAX_PER_PHONE_PER_DAY = 3
+PAYMENT_LINK_MAX_PER_PHONE_PER_DAY = 5
 
 
 def payment_link_is_live(order):

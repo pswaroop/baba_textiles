@@ -332,11 +332,14 @@ class PaymentLinkFlowTests(TestCase):
         self.assertIn("pay_link_1", order.payment_error)
 
     def test_daily_limit_per_phone(self):
-        for i in range(4):
+        # Five links a day per phone; the sixth failure that day gets none.
+        sent = []
+        for i in range(6):
             rid = self.checkout(qty=1 if i % 2 == 0 else 2).json()["razorpay_order_id"]
             self.rzp.payments[rid] = [{"id": f"pay_{i}", "status": "failed"}]
             res = self.fail_report(rid).json()
-        self.assertFalse(res["payment_link_sent"])
+            sent.append(res["payment_link_sent"])
+        self.assertEqual(sent, [True, True, True, True, True, False])
         self.assertEqual(res["payment_status"], "failed")
 
     def test_invalid_phone_gets_no_link(self):
