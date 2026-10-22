@@ -139,6 +139,42 @@ def payment_link_summary(order):
     }
 
 
+# Razorpay accepts up to 2048 characters of description on a payment link.
+PAYMENT_LINK_DESCRIPTION_LIMIT = 2048
+PAYMENT_LINK_MAX_ITEMS_LISTED = 15
+
+
+def _rupees(amount):
+    amount = Decimal(str(amount or 0))
+    return f"₹{amount:,.0f}" if amount == amount.to_integral_value() else f"₹{amount:,.2f}"
+
+
+def payment_link_description(order):
+    """What the customer sees on the payment link's page: the whole order."""
+    items = list(order.items.all())
+    lines = [f"Baba Textiles - Order #{order.order_number}"]
+    for item in items[:PAYMENT_LINK_MAX_ITEMS_LISTED]:
+        lines.append(f"{item.display_name} x {item.quantity}")
+    if len(items) > PAYMENT_LINK_MAX_ITEMS_LISTED:
+        lines.append(f"+ {len(items) - PAYMENT_LINK_MAX_ITEMS_LISTED} more item(s)")
+
+    items_total = sum((item.invoice_unit_price or 0) * item.quantity for item in items)
+    shipping = Decimal(str(order.total_amount)) - Decimal(str(items_total))
+    if items_total and shipping >= 0:
+        lines.append(f"Items {_rupees(items_total)} + Shipping {_rupees(shipping)} = Total {_rupees(order.total_amount)}")
+    else:
+        lines.append(f"Total {_rupees(order.total_amount)}")
+
+    place = ", ".join(x for x in (order.city, order.state) if x)
+    if order.pincode:
+        place = f"{place} - {order.pincode}" if place else order.pincode
+    if place:
+        lines.append(f"Delivering to: {place}")
+
+    # The hosted page may not keep line breaks, so separate visibly too.
+    return " | ".join(lines)[:PAYMENT_LINK_DESCRIPTION_LIMIT]
+
+
 def send_payment_link(order, reason=""):
     """Text the customer a Razorpay Payment Link for this order.
 
@@ -187,7 +223,7 @@ def send_payment_link(order, reason=""):
                 # One link per order: Razorpay rejects a second link with the
                 # same reference_id, which backs up the lock above.
                 "reference_id": locked.order_number,
-                "description": f"Baba Textiles order #{locked.order_number}",
+                "description": payment_link_description(locked),
                 "customer": {
                     "name": (locked.customer_name or "Customer")[:100],
                     "contact": f"+91{phone}",

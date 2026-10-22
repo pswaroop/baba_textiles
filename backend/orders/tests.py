@@ -164,6 +164,20 @@ class PaymentLinkFlowTests(TestCase):
         self.rzp.payment_link.create.assert_not_called()
         self.assertEqual(self.reserved(), 1)  # still in flight; released at expiry as before
 
+    def test_link_page_shows_the_whole_order(self):
+        rid = self.checkout(qty=2).json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
+        self.fail_report(rid)
+        order = Order.objects.get(razorpay_order_id=rid)
+
+        desc = self.rzp.links[order.payment_link_id]["description"]
+
+        self.assertEqual(
+            desc,
+            f"Baba Textiles - Order #{order.order_number} | Cotton Saree — Red — {self.variant.size} x 2 | "
+            "Items ₹2,000 + Shipping ₹60 = Total ₹2,060 | Delivering to: Vizag, Andhra Pradesh - 530001",
+        )
+
     def test_no_link_while_payment_still_in_progress(self):
         rid = self.checkout().json()["razorpay_order_id"]
         self.rzp.payments[rid] = [{"id": "pay_1", "status": "created"}]
