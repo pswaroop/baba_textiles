@@ -80,7 +80,10 @@ class PaymentLinkFlowTests(TestCase):
         self.api = APIClient()
 
     # ---------- helpers ----------
-    def checkout(self, phone="6303570160", qty=1, previous=None):
+    INSTAGRAM_UA = "Mozilla/5.0 (Linux; Android 16; RMX5111; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0 Mobile Safari/537.36 Instagram 452.0.0.48.64 Android"
+    CHROME_UA = "Mozilla/5.0 (Linux; Android 16; RMX5111) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0 Mobile Safari/537.36"
+
+    def checkout(self, phone="6303570160", qty=1, previous=None, user_agent=INSTAGRAM_UA):
         body = {
             "items": [{"variant": self.variant.id, "quantity": qty}],
             "name": "Test Customer", "phone": phone, "address": "1 Long Street Name",
@@ -88,7 +91,7 @@ class PaymentLinkFlowTests(TestCase):
         }
         if previous:
             body["previous_razorpay_order_id"] = previous
-        return self.api.post("/api/create-order/", body, format="json")
+        return self.api.post("/api/create-order/", body, format="json", HTTP_USER_AGENT=user_agent)
 
     def fail_report(self, rzp_order_id, reason="Payment was unsuccessful as you could not complete it in time."):
         return self.api.post("/api/payment-failed/", {"razorpay_order_id": rzp_order_id, "reason": reason}, format="json")
@@ -126,6 +129,26 @@ class PaymentLinkFlowTests(TestCase):
         self.assertAlmostEqual(minutes_left, 15, delta=0.5)
         self.assertGreaterEqual(link["expire_by"] - timezone.now().timestamp(), 15 * 60)
         self.assertEqual(res["payment_link_valid_minutes"], 15)
+
+    def test_non_instagram_failure_gets_no_link_and_releases_stock(self):
+        rid = self.checkout(user_agent=self.CHROME_UA).json()["razorpay_order_id"]
+        self.assertFalse(Order.objects.get(razorpay_order_id=rid).opened_in_instagram)
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
+
+        res = self.fail_report(rid).json()
+
+        self.assertFalse(res["payment_link_sent"])
+        self.assertEqual(res["payment_status"], "failed")
+        self.assertEqual(self.reserved(), 0)
+        self.rzp.payment_link.create.assert_not_called()
+
+    def test_non_instagram_stalled_checkout_gets_no_link(self):
+        rid = self.checkout(user_agent=self.CHROME_UA).json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "created"}]
+        self.age(rid, 6)
+        call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
+        self.rzp.payment_link.create.assert_not_called()
+        self.assertEqual(self.reserved(), 1)  # still in flight; released at expiry as before
 
     def test_no_link_while_payment_still_in_progress(self):
         rid = self.checkout().json()["razorpay_order_id"]

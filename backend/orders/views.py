@@ -94,6 +94,9 @@ PAYMENT_LINK_RAZORPAY_EXPIRY_MINUTES = 16
 # Razorpay has not given up on it yet (a UPI app that never opened stays
 # "in progress" for ~12 minutes).
 PAYMENT_LINK_AFTER_MINUTES = 5
+# Only Instagram's in-app browser has the stuck-UPI problem, so only those
+# orders are texted a link. Set False to text every failed checkout.
+PAYMENT_LINK_INSTAGRAM_ONLY = True
 # Caps how many links one phone number can be texted, so a customer retrying
 # over and over is not flooded with SMS.
 PAYMENT_LINK_MAX_PER_PHONE_PER_DAY = 3
@@ -135,6 +138,9 @@ def send_payment_link(order, reason=""):
 
     Returns True when a link is live for the order after the call.
     """
+    if PAYMENT_LINK_INSTAGRAM_ONLY and not order.opened_in_instagram:
+        return False
+
     phone = re.sub(r"\D", "", order.phone or "")[-10:]
     if not re.fullmatch(r"[6-9]\d{9}", phone):
         return False
@@ -499,6 +505,7 @@ def create_order(request):
                 state=data.get("state"),
                 pincode=data.get("pincode"),
                 payment_status="pending",
+                opened_in_instagram="Instagram" in request.META.get("HTTP_USER_AGENT", ""),
             )
 
             cart_total = Decimal("0.00")
