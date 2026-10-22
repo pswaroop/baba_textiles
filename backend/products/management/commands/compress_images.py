@@ -8,6 +8,7 @@ from products.models import (
     HERO_MAX_WIDTH,
     HERO_SMALL_MAX_WIDTH,
     PRODUCT_MAIN_MAX_WIDTH,
+    PRODUCT_MEDIUM_MAX_WIDTH,
     PRODUCT_SMALL_MAX_WIDTH,
     PRODUCT_THUMB_MAX_WIDTH,
     Category,
@@ -40,6 +41,7 @@ class Command(BaseCommand):
         self._small_copies(HeroImage, "image", "image_small", HERO_SMALL_MAX_WIDTH)
         self._small_copies(Category, "image", "image_small", CATEGORY_SMALL_MAX_WIDTH)
         self._small_copies(ProductImage, "image", "small", PRODUCT_SMALL_MAX_WIDTH)
+        self._small_copies(ProductImage, "image", "medium", PRODUCT_MEDIUM_MAX_WIDTH)
         verb = "Would change" if self.dry else "Changed"
         self.stdout.write(self.style.SUCCESS(f"{verb} {self.changed} files."))
 

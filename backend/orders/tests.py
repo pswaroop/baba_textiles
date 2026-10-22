@@ -824,9 +824,13 @@ class ResponsiveImageTests(TestCase):
         p = Product.objects.create(name="Set", code="S1", category=cat, description="x", original_price=1, price=1)
         p.tags.add(ProductTag.objects.create(name="latest"))
         img = ProductImage.objects.create(product=p, image=self.upload("photo.jpg", "JPEG", (3024, 4032)))
-        self.assertEqual((self.width(img.image), self.width(img.thumbnail), self.width(img.small)), (1000, 600, 300))
+        self.assertEqual(
+            (self.width(img.image), self.width(img.thumbnail), self.width(img.medium), self.width(img.small)),
+            (1000, 600, 400, 300),
+        )
         api_img = APIClient().get(f"/api/products/{p.id}/").json()["images"][0]
         self.assertTrue(api_img["small"].endswith("_w300.webp"))
+        self.assertTrue(api_img["medium"].endswith("_w400.webp"))
         self.assertTrue(api_img["thumbnail"] and api_img["image"])
         listed = APIClient().get("/api/products/all-tagged/").json()["latest"][0]["images"][0]
         self.assertEqual(listed["small"], api_img["small"])
@@ -852,9 +856,9 @@ class ResponsiveImageTests(TestCase):
         cat = Category.objects.create(name="Sets", slug="sets")
         p = Product.objects.create(name="Set", code="S1", category=cat, description="x", original_price=1, price=1)
         img = ProductImage.objects.create(product=p, image=self.upload("photo.jpg", "JPEG", (1200, 1600)))
-        ProductImage.objects.filter(pk=img.pk).update(small=None)  # as for images uploaded before this
+        ProductImage.objects.filter(pk=img.pk).update(small=None, medium=None)  # as for images uploaded before this
         out = StringIO(); call_command("compress_images", "--dry-run", stdout=out)
         self.assertIn("small 300px copy", out.getvalue())
         call_command("compress_images", stdout=StringIO())
         img.refresh_from_db()
-        self.assertEqual(self.width(img.small), 300)
+        self.assertEqual((self.width(img.small), self.width(img.medium)), (300, 400))

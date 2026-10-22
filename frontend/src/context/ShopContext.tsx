@@ -15,6 +15,8 @@ export type ProductImage = {
   thumbnail: string | null;
   // Smallest stored width (300px): cart/checkout tiles and srcset.
   small?: string | null;
+  // 400px: shop cards on 2x-density phones.
+  medium?: string | null;
   color: number | null;
 };
 
@@ -199,6 +201,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({
                 image: img.image,
                 thumbnail: img.thumbnail ?? null,
                 small: img.small ?? null,
+                medium: img.medium ?? null,
                 color: img.color ?? null,
               }))
             : [],

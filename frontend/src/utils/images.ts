@@ -20,16 +20,18 @@ function buildSrcSet(entries: Sized[]): string | undefined {
 export type ProductImageSizes = {
   image?: string | null;
   thumbnail?: string | null;
+  medium?: string | null;
   small?: string | null;
 };
 
-export const PRODUCT_WIDTHS = { small: 300, thumbnail: 600, image: 1000 } as const;
+export const PRODUCT_WIDTHS = { small: 300, medium: 400, thumbnail: 600, image: 1000 } as const;
 
 /** Every stored width: for cards, which range from ~150 to ~300 CSS px. */
 export function productSrcSet(img?: ProductImageSizes | null): string | undefined {
   if (!img) return undefined;
   return buildSrcSet([
     [img.small, PRODUCT_WIDTHS.small],
+    [img.medium, PRODUCT_WIDTHS.medium],
     [img.thumbnail, PRODUCT_WIDTHS.thumbnail],
     [img.image, PRODUCT_WIDTHS.image],
   ]);

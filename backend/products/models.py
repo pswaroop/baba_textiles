@@ -133,6 +133,7 @@ def image_width(image_field):
 # a phone downloads the smallest one that is still sharp at its display size.
 PRODUCT_MAIN_MAX_WIDTH = 1000   # product page main image
 PRODUCT_THUMB_MAX_WIDTH = 600   # cards (~180-280 CSS px) on high-density phones
+PRODUCT_MEDIUM_MAX_WIDTH = 400  # cards on 2x phones (~350-400px needed)
 PRODUCT_SMALL_MAX_WIDTH = 300   # cart/checkout/gallery tiles, low-density cards
 CATEGORY_MAX_WIDTH = 450        # circles of up to ~208 CSS px
 CATEGORY_SMALL_MAX_WIDTH = 240  # 128 CSS px circles on phones
@@ -283,6 +284,8 @@ class ProductImage(models.Model):
     thumbnail = models.ImageField(upload_to="products/thumbs/", blank=True, null=True, editable=False)
     # Smaller still: cart/checkout/gallery tiles and low-density screens.
     small = models.ImageField(upload_to="products/small/", blank=True, null=True, editable=False)
+    # Between small and thumbnail: shop cards on 2x-density phones.
+    medium = models.ImageField(upload_to="products/medium/", blank=True, null=True, editable=False)
     color = models.ForeignKey(
         "ProductColor",
         on_delete=models.SET_NULL,
@@ -328,6 +331,7 @@ class ProductImage(models.Model):
                 stem = Path(self.image.name).stem
                 self.thumbnail.save(f"{stem}_thumb.webp", thumb, save=False)
             save_small_copy(self.image, self.small, PRODUCT_SMALL_MAX_WIDTH)
+            save_small_copy(self.image, self.medium, PRODUCT_MEDIUM_MAX_WIDTH)
 
         super().save(*args, **kwargs)
 

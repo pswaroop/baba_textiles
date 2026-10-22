@@ -11,7 +11,7 @@ from .models import (
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
-        fields = ["id", "image", "thumbnail", "small", "color"]
+        fields = ["id", "image", "thumbnail", "medium", "small", "color"]
 
 class ProductColorSerializer(serializers.ModelSerializer):
     class Meta:
