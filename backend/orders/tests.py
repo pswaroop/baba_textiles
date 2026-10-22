@@ -609,3 +609,105 @@ class ProductDeletionSafetyTests(TestCase):
         from django.db.models import ProtectedError
         with self.assertRaises(ProtectedError):
             self.cat.delete()
+
+
+class AdminStockSafetyTests(TestCase):
+    """An admin save must never undo a sale or re-hold released stock."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        self.boss = get_user_model().objects.create_superuser(username="boss", password="x", email="b@x.com")
+        self.client.force_login(self.boss)
+        cat = Category.objects.create(name="Sets", slug="sets")
+        self.product = Product.objects.create(name="Chanderi Set", code="CH1", category=cat, description="x", original_price=900, price=800)
+        color = ProductColor.objects.create(name="Pink", color="#FFC0CB")
+        self.variant = ProductVariant.objects.create(product=self.product, color=color, size="XL", stock=4, reserved_stock=1)
+
+    def form_data(self, url):
+        """Everything a browser would submit for the form on `url`, as rendered."""
+        from html.parser import HTMLParser
+        html = self.client.get(url).content.decode()
+
+        class Form(HTMLParser):
+            def __init__(self):
+                super().__init__(); self.data = {}; self.select = None; self.textarea = None
+            def handle_starttag(self, tag, a):
+                a = dict(a)
+                if tag == "input" and a.get("name") and a.get("type") not in ("submit", "file", "button"):
+                    if a.get("type") in ("checkbox", "radio") and "checked" not in a:
+                        return
+                    self.data[a["name"]] = a.get("value", "on" if a.get("type") == "checkbox" else "")
+                elif tag == "select" and a.get("name"):
+                    self.select = a["name"]
+                    if "multiple" not in a:  # an empty multi-select sends nothing
+                        self.data.setdefault(self.select, "")
+                elif tag == "option" and self.select and "selected" in a:
+                    self.data[self.select] = a.get("value", "")
+                elif tag == "textarea" and a.get("name"):
+                    self.textarea = a["name"]; self.data[self.textarea] = ""
+            def handle_endtag(self, tag):
+                if tag == "select": self.select = None
+                if tag == "textarea": self.textarea = None
+            def handle_data(self, d):
+                if self.textarea: self.data[self.textarea] += d
+
+        f = Form(); f.feed(html)
+        return html, f.data
+
+    def sale_happens(self):
+        # Checkout completes while the admin page is open: 1 sold, hold released.
+        ProductVariant.objects.filter(id=self.variant.id).update(stock=3, reserved_stock=0)
+
+    def test_product_page_renders_page_open_stock_and_readonly_reserved(self):
+        html, data = self.form_data(f"/admin/products/product/{self.product.id}/change/")
+        self.assertIn("initial-variants-0-stock", data)
+        self.assertNotIn("variants-0-reserved_stock", data)  # read-only now
+
+    def test_product_page_save_without_touching_stock_keeps_live_numbers(self):
+        url = f"/admin/products/product/{self.product.id}/change/"
+        _, data = self.form_data(url)
+        self.sale_happens()
+        data["name"] = "Chanderi Set (renamed)"
+        r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 302, r.content[:3000])
+        self.variant.refresh_from_db()
+        self.assertEqual((self.variant.stock, self.variant.reserved_stock), (3, 0))
+
+    def test_product_page_stock_edit_is_applied_as_a_change(self):
+        url = f"/admin/products/product/{self.product.id}/change/"
+        _, data = self.form_data(url)
+        self.sale_happens()
+        data["variants-0-stock"] = "6"  # admin adds 2 to the 4 they saw
+        r = self.client.post(url, data, follow=True)
+        self.variant.refresh_from_db()
+        self.assertEqual((self.variant.stock, self.variant.reserved_stock), (5, 0))
+        self.assertIn("Your change of +2 was applied, so it is now 5", r.content.decode())
+
+    def test_variant_page_and_list_column_are_safe_too(self):
+        url = f"/admin/products/productvariant/{self.variant.id}/change/"
+        _, data = self.form_data(url)
+        self.sale_happens()
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.variant.refresh_from_db()
+        self.assertEqual((self.variant.stock, self.variant.reserved_stock), (3, 0))
+
+        _, data = self.form_data("/admin/products/productvariant/")
+        ProductVariant.objects.filter(id=self.variant.id).update(stock=2)  # another sale
+        stock_key = next(k for k in data if k.endswith("-stock") and not k.startswith("initial-"))
+        data[stock_key] = str(int(data[stock_key]) + 10)
+        data["_save"] = "Save"
+        self.client.post("/admin/products/productvariant/", data)
+        self.variant.refresh_from_db()
+        self.assertEqual(self.variant.stock, 12)
+
+    def test_new_size_added_in_admin_starts_unreserved(self):
+        url = f"/admin/products/product/{self.product.id}/change/"
+        _, data = self.form_data(url)
+        data["variants-1-color"] = data["variants-0-color"]
+        data["variants-1-size"] = "XXL"
+        data["variants-1-stock"] = "7"
+        data["variants-1-product"] = str(self.product.id)
+        r = self.client.post(url, data)
+        self.assertEqual(r.status_code, 302, r.content[:3000])
+        new = ProductVariant.objects.get(product=self.product, size="XXL")
+        self.assertEqual((new.stock, new.reserved_stock), (7, 0))

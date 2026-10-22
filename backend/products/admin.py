@@ -11,7 +11,74 @@ from .models import (
     HeroImage,
     ProductColor,
 )
+from django.db.models import F
+from django.db.models.functions import Greatest
+
 from orders.models import OrderItem
+
+
+class VariantStockForm(forms.ModelForm):
+    """Admin form that never overwrites live stock numbers.
+
+    Checkout changes stock and reserved stock while an admin page is open. A
+    plain save would write the numbers from when the page was opened back over
+    them, undoing sales and leaving held units stuck. Instead:
+    - reserved stock is never written from admin (it is read-only there);
+    - stock is applied as the change the admin made (new value minus the value
+      shown when the page opened) on top of the live count.
+    """
+
+    class Meta:
+        model = ProductVariant
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stock_note = ""
+        if "stock" in self.fields:
+            # Posts the value shown at page-open time alongside the edited one.
+            self.fields["stock"].show_hidden_initial = True
+
+    def _stock_when_opened(self):
+        raw = self.data.get(self.add_initial_prefix("stock"))
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def save_safely(self, obj):
+        is_new = obj.pk is None or not ProductVariant.objects.filter(pk=obj.pk).exists()
+        if is_new:
+            obj.reserved_stock = 0
+            obj.save()
+            return obj
+
+        other_fields = [
+            f.attname for f in obj._meta.concrete_fields
+            if not f.primary_key and f.attname not in ("stock", "reserved_stock")
+        ]
+        obj.save(update_fields=other_fields)
+
+        opened = self._stock_when_opened()
+        if "stock" in self.cleaned_data and opened is not None:
+            delta = self.cleaned_data["stock"] - opened
+            if delta:
+                live_before = ProductVariant.objects.values_list("stock", flat=True).get(pk=obj.pk)
+                ProductVariant.objects.filter(pk=obj.pk).update(stock=Greatest(F("stock") + delta, 0))
+                if live_before != opened:
+                    obj.refresh_from_db(fields=["stock"])
+                    self.stock_note = (
+                        f"{obj}: stock went from {opened} to {live_before} online while you were "
+                        f"editing (e.g. a sale). Your change of {delta:+d} was applied, so it is now {obj.stock}."
+                    )
+        obj.refresh_from_db(fields=["stock", "reserved_stock"])
+        return obj
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        if commit:
+            self.save_safely(obj)
+        return obj
 
 
 def image_preview_tag(image_field, width=70, height=70):
@@ -104,8 +171,11 @@ class ProductImageInline(admin.TabularInline):
 
 class ProductVariantInline(admin.TabularInline):
     model = ProductVariant
+    form = VariantStockForm
     extra = 1
     fields = ("color", "size", "stock", "reserved_stock")
+    # Managed by checkout and the cleanup job only.
+    readonly_fields = ("reserved_stock",)
 
 
 @admin.register(Product)
@@ -158,6 +228,12 @@ class ProductAdmin(admin.ModelAdmin):
         updated = queryset.update(is_active=True)
         self.message_user(request, f"{updated} product(s) shown in the shop.")
 
+    def save_formset(self, request, form, formset, change):
+        super().save_formset(request, form, formset, change)
+        for f in formset.forms:
+            if getattr(f, "stock_note", ""):
+                self.message_user(request, f.stock_note, level="warning")
+
     def has_delete_permission(self, request, obj=None):
         # Deleting breaks customers' carts and shared links (a re-created
         # product gets new ids). Staff hide products instead; only a superuser
@@ -196,6 +272,8 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
+    form = VariantStockForm
+    readonly_fields = ("reserved_stock",)
     list_display = (
         "product",
         "color",
@@ -224,3 +302,17 @@ class ProductVariantAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Out of stock")
     def out_of_stock(self, obj):
         return obj.is_out_of_stock
+
+    def get_changelist_form(self, request, **kwargs):
+        # The editable stock column uses its own form; make it the safe one.
+        kwargs.setdefault("form", VariantStockForm)
+        return super().get_changelist_form(request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        # Both the edit page and the stock column in the list come through here.
+        if isinstance(form, VariantStockForm):
+            form.save_safely(obj)
+            if form.stock_note:
+                self.message_user(request, form.stock_note, level="warning")
+        else:
+            super().save_model(request, obj, form, change)
