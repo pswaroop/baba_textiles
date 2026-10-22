@@ -6,7 +6,7 @@ import { checkoutHandoffUrl, isInAppBrowser, openInExternalBrowser } from "../ut
 
 const DISMISSED_KEY = "inAppNoticeDismissed";
 
-// Suggests leaving Instagram/Facebook's built-in browser before paying.
+// Suggests leaving Instagram's built-in browser before paying.
 // Payments can still be made here, so the notice can be dismissed.
 export default function InAppBrowserNotice() {
   const location = useLocation();

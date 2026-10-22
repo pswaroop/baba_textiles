@@ -47,10 +47,10 @@ export function clearPendingPayment() {
 }
 
 /* ================= IN-APP BROWSERS ================= */
-// Instagram and Facebook open links in their own WebView, which blocks
-// Checkout's popups and handles UPI app hand-offs poorly.
+// Instagram opens links in its own WebView, which handles UPI app hand-offs
+// poorly. Only Instagram gets the "Open in Chrome" prompts.
 
-const IN_APP_BROWSER_PATTERN = /Instagram|FBAN|FBAV|FB_IAB|FBIOS/i;
+const IN_APP_BROWSER_PATTERN = /Instagram/i;
 
 export function isInAppBrowser(): boolean {
   return typeof navigator !== "undefined" && IN_APP_BROWSER_PATTERN.test(navigator.userAgent);

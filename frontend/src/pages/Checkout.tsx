@@ -153,7 +153,7 @@ export default function Checkout() {
   // Set once the server has texted a payment link for a failed attempt.
   const [linkNotice, setLinkNotice] = useState<LinkNotice | null>(null);
 
-  // An attempt failed inside Instagram/Facebook's browser: offer to carry on
+  // An attempt failed inside Instagram's browser: offer to carry on
   // in Chrome, where UPI apps open reliably.
   const [offerBrowserSwitch, setOfferBrowserSwitch] = useState(false);
   const noteAttemptFailed = () => {
