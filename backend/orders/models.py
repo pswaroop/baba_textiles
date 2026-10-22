@@ -89,8 +89,11 @@ class Order(models.Model):
     payment_link_expires_at = models.DateTimeField(blank=True, null=True)
 
     # Checkout ran inside Instagram's in-app browser, where UPI apps often fail
-    # to open. Payment links are only texted for these orders.
+    # to open.
     opened_in_instagram = models.BooleanField(default=False)
+    # Checkout ran on an Android phone (any browser). These orders are texted a
+    # payment link too.
+    opened_on_android = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at"]

@@ -242,6 +242,28 @@ INDIAPOST_DEFAULT_WEIGHT_GRAMS = int(os.environ.get("INDIAPOST_DEFAULT_WEIGHT_GR
 INDIAPOST_DEFAULT_LENGTH_CM = int(os.environ.get("INDIAPOST_DEFAULT_LENGTH_CM", "25"))
 INDIAPOST_DEFAULT_BREADTH_CM = int(os.environ.get("INDIAPOST_DEFAULT_BREADTH_CM", "20"))
 INDIAPOST_DEFAULT_HEIGHT_CM = int(os.environ.get("INDIAPOST_DEFAULT_HEIGHT_CM", "5"))
+# App logs (checkout rejections, payment links, Razorpay errors). Gunicorn does
+# not capture stderr, so without this they were lost.
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "orders_file": {
+            "class": "logging.handlers.WatchedFileHandler",
+            "filename": str(LOG_DIR / "orders.log"),
+            "formatter": "plain",
+        },
+    },
+    "loggers": {
+        "orders": {"handlers": ["orders_file"], "level": "INFO", "propagate": True},
+    },
+}
+
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True

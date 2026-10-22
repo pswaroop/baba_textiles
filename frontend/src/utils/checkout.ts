@@ -74,6 +74,34 @@ export function openInChrome(url: string = window.location.href) {
     `intent://${target}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
 }
 
+export function isIOS(): boolean {
+  return typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+// Opens `url` outside the in-app browser in one tap. Android: straight into
+// Chrome. iPhone: Chrome if it is installed, otherwise Safari (the
+// x-safari-https scheme opens Safari directly from Instagram/Facebook).
+export function openInExternalBrowser(url: string = window.location.href) {
+  if (!isIOS()) {
+    openInChrome(url);
+    return;
+  }
+
+  const target = url.replace(/^https?:\/\//, "");
+  let left = false;
+  const onHide = () => {
+    if (document.visibilityState === "hidden") left = true;
+  };
+  document.addEventListener("visibilitychange", onHide);
+
+  window.location.href = `googlechromes://${target}`;
+  // Chrome took over if this page went to the background; otherwise use Safari.
+  window.setTimeout(() => {
+    document.removeEventListener("visibilitychange", onHide);
+    if (!left) window.location.href = `x-safari-https://${target}`;
+  }, 1500);
+}
+
 /* ================= CART HAND-OFF ================= */
 // Instagram's browser and Chrome do not share storage, so the cart travels in
 // the checkout link as "productId.variantId.quantity" entries. Only ids and

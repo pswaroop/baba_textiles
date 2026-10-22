@@ -94,9 +94,16 @@ PAYMENT_LINK_RAZORPAY_EXPIRY_MINUTES = 16
 # Razorpay has not given up on it yet (a UPI app that never opened stays
 # "in progress" for ~12 minutes).
 PAYMENT_LINK_AFTER_MINUTES = 5
-# Only Instagram's in-app browser has the stuck-UPI problem, so only those
-# orders are texted a link. Set False to text every failed checkout.
-PAYMENT_LINK_INSTAGRAM_ONLY = True
+# Links are texted for checkouts on phones where UPI apps hand-offs fail most:
+# Instagram's in-app browser (Android or iPhone) and Android browsers. Set
+# False to text every failed checkout, desktop and iPhone browsers included.
+PAYMENT_LINK_MOBILE_ONLY = True
+
+
+def payment_link_eligible(order):
+    if not PAYMENT_LINK_MOBILE_ONLY:
+        return True
+    return order.opened_in_instagram or order.opened_on_android
 # Caps how many links one phone number can be texted, so a customer retrying
 # over and over is not flooded with SMS.
 PAYMENT_LINK_MAX_PER_PHONE_PER_DAY = 3
@@ -138,7 +145,7 @@ def send_payment_link(order, reason=""):
 
     Returns True when a link is live for the order after the call.
     """
-    if PAYMENT_LINK_INSTAGRAM_ONLY and not order.opened_in_instagram:
+    if not payment_link_eligible(order):
         return False
 
     phone = re.sub(r"\D", "", order.phone or "")[-10:]
@@ -435,8 +442,16 @@ def create_order(request):
     data = request.data
     items = data.get("items", [])
 
+    def reject(message, status=400, **details):
+        # Logged so a rejected checkout can be explained afterwards.
+        logger.warning(
+            "create_order rejected (%s): %s | phone=%s items=%s %s",
+            status, message, mask_phone(data.get("phone")), items, details or "",
+        )
+        return Response({"error": message}, status=status)
+
     if not items:
-        return Response({"error": "No items in the order."}, status=400)
+        return reject("No items in the order.")
 
     aggregated_items = {}
     for item in items:
@@ -446,7 +461,7 @@ def create_order(request):
             aggregated_items[variant_id] = aggregated_items.get(variant_id, 0) + quantity
 
     if not aggregated_items:
-        return Response({"error": "No valid items in the order."}, status=400)
+        return reject("No valid items in the order.")
 
     # The customer's previous attempt (closed modal, page reloaded while they
     # were in their UPI app) still holds its stock. Settle it first, or a
@@ -459,20 +474,21 @@ def create_order(request):
             payment_status="pending",
         )
 
-    # The same cart, retried from another browser (e.g. after switching from
-    # Instagram to Chrome), while the earlier attempt still has a payment link
-    # out. Cancel that link so the customer cannot pay for the cart twice.
+    # The same customer retrying from another browser (e.g. after switching
+    # from Instagram to Chrome), or with the cart slightly changed, while an
+    # earlier attempt still holds some of these items (often with a payment
+    # link out). Settle it, so the retry is not blocked by the customer's own
+    # reservation and the old link cannot be paid as well.
     phone = data.get("phone")
     if phone:
+        wanted = {int(v) for v in aggregated_items}
         for candidate in Order.objects.filter(
             phone=phone,
             payment_status="pending",
-            payment_link_id__isnull=False,
+            stock_released=False,
         ).prefetch_related("items"):
-            same_cart = {i.variant_id: i.quantity for i in candidate.items.all()} == {
-                int(v): q for v, q in aggregated_items.items()
-            }
-            if same_cart and candidate not in previous_attempts:
+            overlaps = wanted & {i.variant_id for i in candidate.items.all()}
+            if overlaps and candidate not in previous_attempts:
                 previous_attempts.append(candidate)
 
     for previous_order in previous_attempts:
@@ -487,6 +503,7 @@ def create_order(request):
 
         if previous_order.payment_status == "paid":
             # That attempt (or its payment link) was paid after all.
+            logger.info("create_order: earlier attempt %s already paid", previous_order.order_number)
             return Response({
                 "error": "Your earlier payment for this order went through.",
                 "already_paid": True,
@@ -506,6 +523,7 @@ def create_order(request):
                 pincode=data.get("pincode"),
                 payment_status="pending",
                 opened_in_instagram="Instagram" in request.META.get("HTTP_USER_AGENT", ""),
+                opened_on_android="Android" in request.META.get("HTTP_USER_AGENT", ""),
             )
 
             cart_total = Decimal("0.00")
@@ -604,13 +622,13 @@ def create_order(request):
         })
 
     except ValueError as e:
-        return Response({"error": str(e)}, status=400)
+        return reject(str(e))
 
     except ProductVariant.DoesNotExist:
-        return Response({"error": "One or more products no longer exist."}, status=400)
+        return reject("One or more products no longer exist.")
 
     except Exception as e:
-        print("🔥 CREATE ORDER FATAL ERROR:", str(e))
+        logger.exception("create_order failed: %s", e)
         return Response(
             {"error": "An unexpected error occurred while creating your order."},
             status=500

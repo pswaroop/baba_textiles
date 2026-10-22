@@ -2,13 +2,15 @@ import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 import type { ProductVariant } from "../context/ShopContext";
-import { ShieldCheck, MapPin, X, AlertCircle, MessageSquare } from "lucide-react";
+import { ShieldCheck, MapPin, X, AlertCircle, MessageSquare, ExternalLink } from "lucide-react";
 import { toast } from "react-toastify";
 import {
   CART_HANDOFF_PARAM,
+  checkoutHandoffUrl,
   clearPendingPayment,
   decodeCartHandoff,
   isInAppBrowser,
+  openInExternalBrowser,
   isMobileDevice,
   loadPendingPayment,
   loadRazorpay,
@@ -126,7 +128,7 @@ function FieldError({ id, message }: { id: string; message: string }) {
 }
 
 export default function Checkout() {
-  const { cart, cartTotal, shippingTotal, orderTotal, clearCart, restoreCart, user } = useShop();
+  const { cart, cartTotal, shippingTotal, orderTotal, clearCart, restoreCart, pruneCart, user } = useShop();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -150,6 +152,13 @@ export default function Checkout() {
 
   // Set once the server has texted a payment link for a failed attempt.
   const [linkNotice, setLinkNotice] = useState<LinkNotice | null>(null);
+
+  // An attempt failed inside Instagram/Facebook's browser: offer to carry on
+  // in Chrome, where UPI apps open reliably.
+  const [offerBrowserSwitch, setOfferBrowserSwitch] = useState(false);
+  const noteAttemptFailed = () => {
+    if (inAppBrowser) setOfferBrowserSwitch(true);
+  };
 
   // ✅ State-based form control
   const [form, setForm] = useState<CheckoutForm>({
@@ -240,6 +249,32 @@ export default function Checkout() {
       navigate("/cart");
     }
   }, [cart, navigate, restoringCart]);
+
+  // A product deleted or re-created in admin since it was added would make the
+  // server reject the whole order, so drop it here and say so.
+  useEffect(() => {
+    if (restoringCart) return;
+    pruneCart().then((removed) => {
+      if (removed.length) {
+        toast.warn(
+          `${removed.join(", ")} ${removed.length > 1 ? "are" : "is"} no longer available ` +
+            "and was removed from your cart. Please add it again from the shop."
+        );
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoringCart]);
+
+  const openCheckoutInBrowser = () =>
+    openInExternalBrowser(
+      checkoutHandoffUrl(
+        cart.map((item) => ({
+          productId: item.product.id,
+          variantId: item.variantId,
+          quantity: item.quantity,
+        }))
+      )
+    );
 
   const noteLinkSent = (outcome: PaymentOutcome | null) => {
     if (!outcome?.payment_link_sent) return false;
@@ -354,6 +389,7 @@ export default function Checkout() {
   useEffect(() => {
     const paymentFailed = searchParams.get("payment") === "failed";
     if (paymentFailed) {
+      noteAttemptFailed();
       if (searchParams.get("link") !== "sent") {
         toast.error(
           "Payment could not be completed. If money was deducted, it will be " +
@@ -376,8 +412,10 @@ export default function Checkout() {
           completeOrder(pending.orderNumber);
         } else if (status !== "pending") {
           clearPendingPayment();
+          noteAttemptFailed();
         } else {
           noteLinkSent(outcome);
+          noteAttemptFailed();
         }
         // Still pending: keep it — the next attempt sends it along so the
         // server can release its stock.
@@ -586,7 +624,10 @@ export default function Checkout() {
             );
             if (outcome.payment_status === "paid") {
               completeOrder(orderNumber);
-            } else if (!noteLinkSent(outcome)) {
+              return;
+            }
+            noteAttemptFailed();
+            if (!noteLinkSent(outcome)) {
               if (outcome.payment_status !== "pending") clearPendingPayment();
               toast.warn("Payment window closed. Your order was not placed.");
             }
@@ -624,7 +665,10 @@ export default function Checkout() {
         const outcome = await reportAbandonedAttempt(razorpayOrderId, description);
         if (outcome.payment_status === "paid") {
           completeOrder(orderNumber);
-        } else if (!noteLinkSent(outcome)) {
+          return;
+        }
+        noteAttemptFailed();
+        if (!noteLinkSent(outcome)) {
           if (outcome.payment_status !== "pending") clearPendingPayment();
           toast.error(`${description} — please try again.`);
         }
@@ -659,6 +703,25 @@ export default function Checkout() {
             <ShieldCheck className="w-4 h-4 text-green-600" /> 256-bit Encrypted Connection
           </div>
         </div>
+
+        {offerBrowserSwitch && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-4 flex items-start gap-3">
+            <ExternalLink className="w-5 h-5 mt-0.5 shrink-0 text-amber-700" />
+            <div className="text-sm flex-grow">
+              <p className="font-semibold">Payment not going through inside Instagram?</p>
+              <p className="mt-1 text-amber-800">
+                PhonePe and Google Pay open properly in Chrome. Your cart comes with you.
+              </p>
+              <button
+                type="button"
+                onClick={openCheckoutInBrowser}
+                className="mt-3 w-full sm:w-auto px-5 py-2.5 bg-baba-primary text-white rounded-md text-xs font-bold uppercase tracking-widest hover:bg-baba-accent transition-colors"
+              >
+                Open in Chrome
+              </button>
+            </div>
+          </div>
+        )}
 
         {linkNotice && (
           <div

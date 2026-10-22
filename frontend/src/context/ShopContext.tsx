@@ -92,6 +92,8 @@ type ShopContextType = {
   // Rebuilds the cart from a checkout hand-off link; returns how many items
   // could be restored.
   restoreCart: (entries: CartHandoffEntry[]) => Promise<number>;
+  // Drops cart items whose product or size no longer exists; returns their names.
+  pruneCart: () => Promise<string[]>;
 
   wishlist: Product[];
   addToWishlist: (product: Product) => void;
@@ -425,6 +427,39 @@ useEffect(() => {
     return items.length;
   }, [fetchProductById]);
 
+  const pruneCart = useCallback(async () => {
+    const productIds = Array.from(new Set(cart.map((item) => item.product.id)));
+    const gone = new Set<string>();
+    const variantsById = new Map<string, Set<number>>();
+
+    await Promise.all(
+      productIds.map(async (productId) => {
+        try {
+          const res = await fetch(`${API_BASE}/${encodeURIComponent(productId)}/`);
+          // Only a definite "not found" removes anything; a network blip must not.
+          if (res.status === 404) {
+            gone.add(productId);
+          } else if (res.ok) {
+            const [fresh] = mapProducts([await res.json()]);
+            if (fresh) variantsById.set(productId, new Set(fresh.variants.map((v) => v.id)));
+          }
+        } catch {
+          // Keep the item; the server still checks it at payment.
+        }
+      })
+    );
+
+    const removed: string[] = [];
+    const isStale = (item: CartItem) =>
+      gone.has(item.product.id) ||
+      (variantsById.has(item.product.id) && !variantsById.get(item.product.id)!.has(item.variantId));
+    for (const item of cart) {
+      if (isStale(item) && !removed.includes(item.product.name)) removed.push(item.product.name);
+    }
+    if (removed.length) setCart((prev) => prev.filter((item) => !isStale(item)));
+    return removed;
+  }, [cart, mapProducts]);
+
   /* ================= DERIVED CART TOTALS ================= */
   const cartTotal = useMemo(() => 
     cart.reduce((total, item) => total + item.product.price * item.quantity, 0), 
@@ -481,6 +516,7 @@ useEffect(() => {
     orderTotal,
     clearCart,
     restoreCart,
+    pruneCart,
     wishlist,
     addToWishlist,
     removeFromWishlist,
@@ -504,6 +540,7 @@ useEffect(() => {
     updateCartQuantity,
     clearCart,
     restoreCart,
+    pruneCart,
     addToWishlist,
     removeFromWishlist,
     isInWishlist

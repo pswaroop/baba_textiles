@@ -77,15 +77,19 @@ class PaymentLinkFlowTests(TestCase):
         self.variant = ProductVariant.objects.create(
             product=product, color=color, size=SIZE_CHOICES[0][0], stock=5,
         )
+        self.other_variant = ProductVariant.objects.create(
+            product=product, color=color, size=SIZE_CHOICES[1][0], stock=5,
+        )
         self.api = APIClient()
 
     # ---------- helpers ----------
     INSTAGRAM_UA = "Mozilla/5.0 (Linux; Android 16; RMX5111; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0 Mobile Safari/537.36 Instagram 452.0.0.48.64 Android"
     CHROME_UA = "Mozilla/5.0 (Linux; Android 16; RMX5111) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0 Mobile Safari/537.36"
+    DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0 Safari/537.36"
 
-    def checkout(self, phone="6303570160", qty=1, previous=None, user_agent=INSTAGRAM_UA):
+    def checkout(self, phone="6303570160", qty=1, previous=None, user_agent=INSTAGRAM_UA, variant=None):
         body = {
-            "items": [{"variant": self.variant.id, "quantity": qty}],
+            "items": [{"variant": (variant or self.variant).id, "quantity": qty}],
             "name": "Test Customer", "phone": phone, "address": "1 Long Street Name",
             "city": "Vizag", "state": "Andhra Pradesh", "pincode": "530001",
         }
@@ -130,9 +134,19 @@ class PaymentLinkFlowTests(TestCase):
         self.assertGreaterEqual(link["expire_by"] - timezone.now().timestamp(), 15 * 60)
         self.assertEqual(res["payment_link_valid_minutes"], 15)
 
-    def test_non_instagram_failure_gets_no_link_and_releases_stock(self):
+    def test_android_browser_failure_gets_link(self):
         rid = self.checkout(user_agent=self.CHROME_UA).json()["razorpay_order_id"]
-        self.assertFalse(Order.objects.get(razorpay_order_id=rid).opened_in_instagram)
+        order = Order.objects.get(razorpay_order_id=rid)
+        self.assertEqual((order.opened_in_instagram, order.opened_on_android), (False, True))
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
+
+        res = self.fail_report(rid).json()
+
+        self.assertTrue(res["payment_link_sent"])
+        self.assertEqual(self.reserved(), 1)
+
+    def test_desktop_failure_gets_no_link_and_releases_stock(self):
+        rid = self.checkout(user_agent=self.DESKTOP_UA).json()["razorpay_order_id"]
         self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
 
         res = self.fail_report(rid).json()
@@ -142,8 +156,8 @@ class PaymentLinkFlowTests(TestCase):
         self.assertEqual(self.reserved(), 0)
         self.rzp.payment_link.create.assert_not_called()
 
-    def test_non_instagram_stalled_checkout_gets_no_link(self):
-        rid = self.checkout(user_agent=self.CHROME_UA).json()["razorpay_order_id"]
+    def test_desktop_stalled_checkout_gets_no_link(self):
+        rid = self.checkout(user_agent=self.DESKTOP_UA).json()["razorpay_order_id"]
         self.rzp.payments[rid] = [{"id": "pay_1", "status": "created"}]
         self.age(rid, 6)
         call_command("cleanup_expired_orders", stdout=StringIO(), stderr=StringIO())
@@ -225,13 +239,37 @@ class PaymentLinkFlowTests(TestCase):
         self.assertEqual(self.rzp.links[old.payment_link_id]["status"], "cancelled")
         self.assertEqual(self.reserved(), 1)  # only the new attempt holds stock
 
-    def test_retry_with_different_cart_leaves_link_alone(self):
+    def test_retry_with_changed_quantity_is_not_blocked_by_own_hold(self):
+        # The last pieces are held by the customer's own failed attempt.
+        ProductVariant.objects.filter(id=self.variant.id).update(stock=2)
+        rid = self.checkout(qty=2).json()["razorpay_order_id"]
+        self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
+        self.fail_report(rid)
+        old = Order.objects.get(razorpay_order_id=rid)
+
+        r = self.checkout(qty=1)  # new browser, quantity changed
+
+        self.assertEqual(r.status_code, 200)
+        old.refresh_from_db()
+        self.assertEqual(old.payment_status, "failed")
+        self.assertEqual(self.rzp.links[old.payment_link_id]["status"], "cancelled")
+        self.assertEqual(self.reserved(), 1)
+
+    def test_retry_without_payment_link_is_not_blocked_by_own_hold(self):
+        ProductVariant.objects.filter(id=self.variant.id).update(stock=1)
+        self.checkout(qty=1, user_agent=self.DESKTOP_UA)  # abandoned, no link
+
+        r = self.checkout(qty=1, user_agent=self.DESKTOP_UA)
+
+        self.assertEqual(r.status_code, 200)
+
+    def test_retry_with_different_item_leaves_link_alone(self):
         rid = self.checkout(qty=1).json()["razorpay_order_id"]
         self.rzp.payments[rid] = [{"id": "pay_1", "status": "failed"}]
         self.fail_report(rid)
         old = Order.objects.get(razorpay_order_id=rid)
 
-        self.checkout(qty=3)
+        self.checkout(qty=1, variant=self.other_variant)
 
         old.refresh_from_db()
         self.assertEqual(old.payment_status, "pending")
@@ -462,3 +500,31 @@ class PaymentLinkFlowTests(TestCase):
         })
 
         self.assertEqual(r["Location"], "https://shop.example.com/checkout?payment=failed&link=sent")
+
+    def test_rejections_are_logged_with_reason(self):
+        ProductVariant.objects.filter(id=self.variant.id).update(stock=0)
+        with self.assertLogs("orders", level="WARNING") as logs:
+            r = self.checkout()
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Insufficient stock", logs.output[0])
+        self.assertIn("+91 63•••••160", logs.output[0])
+
+    def test_deleted_product_rejection_is_logged(self):
+        with self.assertLogs("orders", level="WARNING") as logs:
+            r = self.api.post("/api/create-order/", {"items": [{"variant": 999999, "quantity": 1}], "phone": "6303570160"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("no longer exist", logs.output[0])
+
+    def test_repair_reserved_stock(self):
+        rid = self.checkout(qty=2).json()["razorpay_order_id"]  # live hold of 2
+        ProductVariant.objects.filter(id=self.variant.id).update(reserved_stock=3)  # 1 phantom
+        ProductVariant.objects.filter(id=self.other_variant.id).update(reserved_stock=1)  # all phantom
+
+        out = StringIO()
+        call_command("repair_reserved_stock", stdout=out)
+        self.assertIn("Would correct", out.getvalue())
+        self.assertEqual(self.reserved(), 3)  # dry run changes nothing
+
+        call_command("repair_reserved_stock", "--apply", stdout=StringIO())
+        self.variant.refresh_from_db(); self.other_variant.refresh_from_db()
+        self.assertEqual((self.variant.reserved_stock, self.other_variant.reserved_stock), (2, 0))

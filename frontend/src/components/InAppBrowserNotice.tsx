@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ExternalLink, X } from "lucide-react";
 import { useShop } from "../context/ShopContext";
-import { checkoutHandoffUrl, isAndroid, isInAppBrowser, openInChrome } from "../utils/checkout";
+import { checkoutHandoffUrl, isInAppBrowser, openInExternalBrowser } from "../utils/checkout";
 
 const DISMISSED_KEY = "inAppNoticeDismissed";
 
@@ -30,40 +30,32 @@ export default function InAppBrowserNotice() {
     }
   };
 
+  // From the cart or checkout, go straight to checkout in the browser with the
+  // cart carried over; elsewhere just reopen this page.
+  const targetUrl = () =>
+    /^\/(cart|checkout)/.test(location.pathname) && cart.length
+      ? checkoutHandoffUrl(
+          cart.map((item) => ({
+            productId: item.product.id,
+            variantId: item.variantId,
+            quantity: item.quantity,
+          }))
+        )
+      : window.location.href;
+
   return (
     <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-sm">
       <div className="container mx-auto px-4 py-3 flex items-start gap-3">
         <ExternalLink size={16} className="mt-0.5 shrink-0" />
         <div className="flex-grow">
-          <p className="font-medium">For a smoother payment, open this page in your browser.</p>
-          {isAndroid() ? (
-            <button
-              type="button"
-              onClick={() =>
-                // From the cart, go straight to checkout in Chrome with the
-                // cart carried over; elsewhere just reopen this page.
-                openInChrome(
-                  location.pathname.startsWith("/cart") && cart.length
-                    ? checkoutHandoffUrl(
-                        cart.map((item) => ({
-                          productId: item.product.id,
-                          variantId: item.variantId,
-                          quantity: item.quantity,
-                        }))
-                      )
-                    : window.location.href
-                )
-              }
-              className="mt-2 px-3 py-1.5 bg-amber-900 text-white rounded-md text-xs font-semibold"
-            >
-              Open in Chrome
-            </button>
-          ) : (
-            <p className="text-xs mt-1">
-              Tap <span className="font-semibold">•••</span> at the top right, then{" "}
-              <span className="font-semibold">Open in external browser</span>.
-            </p>
-          )}
+          <p className="font-medium">For a smoother payment, open this page in Chrome.</p>
+          <button
+            type="button"
+            onClick={() => openInExternalBrowser(targetUrl())}
+            className="mt-2 px-3 py-1.5 bg-amber-900 text-white rounded-md text-xs font-semibold"
+          >
+            Open in Chrome
+          </button>
         </div>
         <button
           type="button"

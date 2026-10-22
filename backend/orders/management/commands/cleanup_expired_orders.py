@@ -4,12 +4,13 @@ import razorpay
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from orders.models import Order
 from orders.views import (
     PAYMENT_LINK_AFTER_MINUTES,
-    PAYMENT_LINK_INSTAGRAM_ONLY,
+    PAYMENT_LINK_MOBILE_ONLY,
     cancel_payment_link,
     ensure_payment_captured,
     finalize_paid_order,
@@ -192,8 +193,8 @@ class Command(BaseCommand):
             created_at__lt=timezone.now() - timedelta(minutes=PAYMENT_LINK_AFTER_MINUTES),
             created_at__gte=timezone.now() - timedelta(minutes=self.EXPIRY_MINUTES),
         )
-        if PAYMENT_LINK_INSTAGRAM_ONLY:
-            stalled = stalled.filter(opened_in_instagram=True)
+        if PAYMENT_LINK_MOBILE_ONLY:
+            stalled = stalled.filter(Q(opened_in_instagram=True) | Q(opened_on_android=True))
         sent = 0
         for order in stalled:
             try:
