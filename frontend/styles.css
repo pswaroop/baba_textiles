@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap");
+/* Web fonts are linked from index.html so they start downloading with the page. */
 
 @tailwind base;
 @tailwind components;

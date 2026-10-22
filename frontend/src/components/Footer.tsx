@@ -110,7 +110,7 @@ const Footer = () => {
               className="flex items-center gap-1 text-orange-600 hover:underline"
             >
               <img
-                src="https://www.staffarc.in/images/Staffarc-logo.png"
+                src="/staffarc-logo.webp"
                 alt="StaffArc"
                 loading="lazy"
                 decoding="async"
