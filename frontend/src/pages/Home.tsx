@@ -175,8 +175,10 @@ export default function Home() {
                     src={img}
                     srcSet={heroSrcSets[i]}
                     sizes="160px"
-                    loading={i < 2 ? "eager" : "lazy"} 
-                    fetchPriority={i === 0 ? "high" : "auto"}
+                    // Lazy: this desktop section is hidden on phones, and
+                    // lazy images in hidden sections are never fetched. On
+                    // desktop they are on screen, so they load immediately.
+                    loading="lazy"
                     className="w-full h-full object-cover hover:scale-110 transition duration-500"
                     alt={`Hero showcase ${i + 1}`}
                   />
