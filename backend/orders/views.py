@@ -567,6 +567,7 @@ def create_order(request):
                 payment_status="pending",
                 opened_in_instagram="Instagram" in request.META.get("HTTP_USER_AGENT", ""),
                 opened_on_android="Android" in request.META.get("HTTP_USER_AGENT", ""),
+                checkout_mode=data.get("checkout_mode") if data.get("checkout_mode") in ("redirect", "popup") else "",
             )
 
             cart_total = Decimal("0.00")
@@ -634,6 +635,7 @@ def create_order(request):
                     # Lets the dashboard show which browser a stuck payment came
                     # from (e.g. Instagram's in-app browser).
                     "user_agent": request.META.get("HTTP_USER_AGENT", "")[:250],
+                    "checkout_mode": order.checkout_mode,
                 },
             })
         except Exception as e:

@@ -178,6 +178,33 @@ class PaymentLinkFlowTests(TestCase):
             "Items ₹2,000 + Shipping ₹60 = Total ₹2,060 | Delivering to: Vizag, Andhra Pradesh - 530001",
         )
 
+    def test_checkout_mode_is_recorded_and_whitelisted(self):
+        def create(mode):
+            body = {"items": [{"variant": self.variant.id, "quantity": 1}], "phone": "6303570160", "checkout_mode": mode}
+            r = self.api.post("/api/create-order/", body, format="json", HTTP_USER_AGENT=self.INSTAGRAM_UA)
+            return Order.objects.get(razorpay_order_id=r.json()["razorpay_order_id"])
+        self.assertEqual(create("popup").checkout_mode, "popup")
+        self.assertEqual(self.rzp.order.create.call_args[0][0]["notes"]["checkout_mode"], "popup")
+        self.assertEqual(create("redirect").checkout_mode, "redirect")
+        self.assertEqual(create("<script>").checkout_mode, "")
+
+    def test_checkout_mode_report(self):
+        for i, (mode, outcome) in enumerate([("redirect", "timeout"), ("redirect", "paid"), ("popup", "paid"), ("popup", "paid")]):
+            body = {"items": [{"variant": self.variant.id, "quantity": 1}], "phone": f"630357016{i}", "checkout_mode": mode}
+            rid = self.api.post("/api/create-order/", body, format="json", HTTP_USER_AGENT=self.INSTAGRAM_UA).json()["razorpay_order_id"]
+            if outcome == "paid":
+                self.rzp.payments[rid] = [{"id": f"p{i}", "status": "captured", "method": "upi"}]
+                Order.objects.filter(razorpay_order_id=rid).update(payment_status="paid")
+            else:
+                self.rzp.payments[rid] = [{"id": f"p{i}", "status": "failed", "method": "upi", "error_reason": "payment_timed_out", "vpa": None}]
+        out = StringIO()
+        call_command("checkout_mode_report", stdout=out)
+        lines = out.getvalue().splitlines()
+        redirect = next(l for l in lines if l.strip().startswith("redirect"))
+        popup = next(l for l in lines if l.strip().startswith("popup"))
+        self.assertIn("paid  50%", redirect); self.assertIn("app never opened  50%", redirect)
+        self.assertIn("paid 100%", popup); self.assertIn("app never opened   0%", popup)
+
     def test_no_link_while_payment_still_in_progress(self):
         rid = self.checkout().json()["razorpay_order_id"]
         self.rzp.payments[rid] = [{"id": "pay_1", "status": "created"}]

@@ -8,8 +8,12 @@ import { smallestProductImage } from "../utils/images";
 import {
   CART_HANDOFF_PARAM,
   checkoutHandoffUrl,
+  checkoutMode,
   clearPendingPayment,
   decodeCartHandoff,
+  forgetInstagramPaymentFailure,
+  hadRecentInstagramPaymentFailure,
+  rememberInstagramPaymentFailure,
   isInAppBrowser,
   openInExternalBrowser,
   isMobileDevice,
@@ -165,6 +169,17 @@ export default function Checkout() {
   const [offerBrowserSwitch, setOfferBrowserSwitch] = useState(false);
   const noteAttemptFailed = () => {
     if (inAppBrowser) setOfferBrowserSwitch(true);
+    rememberInstagramPaymentFailure();
+  };
+
+  // Instagram on Android, after a failed attempt: the next Pay press first
+  // suggests Chrome. "Try again here" sets this so the retry goes through.
+  const [showSwitchPrompt, setShowSwitchPrompt] = useState(false);
+  const skipSwitchPromptOnce = useRef(false);
+  const tryAgainHere = () => {
+    setShowSwitchPrompt(false);
+    skipSwitchPromptOnce.current = true;
+    (document.getElementById("checkout-form") as HTMLFormElement | null)?.requestSubmit();
   };
 
   // ✅ State-based form control
@@ -382,6 +397,7 @@ export default function Checkout() {
     if (hasProcessedPayment.current) return;
     hasProcessedPayment.current = true;
     clearPendingPayment();
+    forgetInstagramPaymentFailure();
     clearCart();
     navigate(`/order-success?order=${encodeURIComponent(orderNumber)}`, {
       state: { orderNumber },
@@ -487,6 +503,12 @@ export default function Checkout() {
       return;
     }
 
+    if (hadRecentInstagramPaymentFailure() && !skipSwitchPromptOnce.current) {
+      setShowSwitchPrompt(true);
+      return;
+    }
+    skipSwitchPromptOnce.current = false;
+
     setIsProcessing(true);
     hasProcessedPayment.current = false; // Reset lock on new attempt
     setLinkNotice(null); // A new attempt cancels any texted link
@@ -514,6 +536,7 @@ export default function Checkout() {
       // create_order checks and reserves stock inside a transaction, so no
       // separate stock check is made first — every extra round trip before
       // rzp.open() makes in-app browsers more likely to block the payment.
+      const mode = checkoutMode();
       const orderData = {
         items: cart
           .map((item) => {
@@ -554,6 +577,7 @@ export default function Checkout() {
         // Lets the server release the stock still held by an earlier,
         // abandoned attempt from this browser before reserving again.
         previous_razorpay_order_id: loadPendingPayment()?.razorpayOrderId || null,
+        checkout_mode: mode,
       };
 
       const orderRes = await fetch(`${API_BASE}/create-order/`, {
@@ -602,7 +626,7 @@ export default function Checkout() {
         // longer depends on this page surviving — both of which break in
         // Instagram/Facebook in-app browsers.
         callback_url: `${API_BASE}/payment-callback/`,
-        redirect: true,
+        redirect: mode === "redirect",
 
         prefill: {
           name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim() || user?.name || "Customer",
@@ -642,6 +666,38 @@ export default function Checkout() {
           },
         },
       };
+
+      if (mode === "popup") {
+        // Popup mode: the result comes back here instead of to callback_url.
+        delete options.callback_url;
+        options.handler = async function (response: any) {
+          try {
+            const res = await fetch(`${API_BASE}/verify-payment/`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+              completeOrder(data.order_number || orderNumber);
+              return;
+            }
+          } catch (err) {
+            console.error("Payment verification failed", err);
+          }
+          // Could not confirm it here; the server (webhook) may have it.
+          const outcome = await resolvePaymentOutcome(razorpayOrderId, 5);
+          if (outcome.payment_status === "paid") {
+            completeOrder(orderNumber);
+          } else {
+            toast.error(
+              "We could not confirm your payment yet. If money was deducted, it will be " +
+                "confirmed automatically or refunded within 5–7 working days."
+            );
+            setIsProcessing(false);
+          }
+        };
+      }
 
       if (isMobileDevice()) {
         // UPI apps are only offered on phones. List them explicitly so PhonePe
@@ -710,6 +766,41 @@ export default function Checkout() {
             <ShieldCheck className="w-4 h-4 text-green-600" /> 256-bit Encrypted Connection
           </div>
         </div>
+
+        {showSwitchPrompt && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="switch-prompt-title"
+            className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4"
+          >
+            <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-xl text-center">
+              <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                <ExternalLink className="w-6 h-6 text-amber-700" />
+              </div>
+              <h2 id="switch-prompt-title" className="text-lg font-bold text-baba-primary">
+                Payment apps don't open properly inside Instagram
+              </h2>
+              <p className="text-sm text-gray-600 mt-2">
+                PhonePe and Google Pay work reliably in Chrome. Your cart comes with you.
+              </p>
+              <button
+                type="button"
+                onClick={openCheckoutInBrowser}
+                className="mt-5 w-full bg-baba-primary text-white py-3.5 rounded-md text-xs font-bold uppercase tracking-widest hover:bg-baba-accent transition-colors"
+              >
+                Open in Chrome
+              </button>
+              <button
+                type="button"
+                onClick={tryAgainHere}
+                className="mt-3 w-full py-3 text-sm text-gray-600 underline underline-offset-2"
+              >
+                Try again here
+              </button>
+            </div>
+          </div>
+        )}
 
         {offerBrowserSwitch && (
           <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-4 flex items-start gap-3">

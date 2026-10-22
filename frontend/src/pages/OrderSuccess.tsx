@@ -66,7 +66,7 @@ import { useEffect } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { CheckCircle, FileText } from "lucide-react";
 import { useShop } from "../context/ShopContext";
-import { clearPendingPayment } from "../utils/checkout";
+import { clearPendingPayment, forgetInstagramPaymentFailure } from "../utils/checkout";
 
 export default function OrderSuccess() {
   const navigate = useNavigate();
@@ -87,6 +87,7 @@ export default function OrderSuccess() {
     if (orderFromUrl) {
       clearCart();
       clearPendingPayment();
+      forgetInstagramPaymentFailure();
     }
   }, [orderFromUrl, clearCart]);
 

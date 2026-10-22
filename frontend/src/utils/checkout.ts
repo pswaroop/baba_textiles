@@ -74,6 +74,68 @@ export function openInChrome(url: string = window.location.href) {
     `intent://${target}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
 }
 
+// Instagram on Android is where UPI apps most often fail to open (29% of UPI
+// attempts vs 13-14% elsewhere), so the experiments below target only it.
+export function isInstagramAndroid(): boolean {
+  return isInAppBrowser() && isAndroid();
+}
+
+/* ============ CHECKOUT MODE EXPERIMENT (Instagram on Android) ============ */
+// Razorpay Checkout opened as a redirect (the page moves to Razorpay) or as a
+// popup over our page. Instagram may let UPI apps open from one more than the
+// other; each phone is assigned one at random and keeps it, and every order
+// records which was used (see the checkout_mode_report command).
+
+export type CheckoutMode = "redirect" | "popup";
+const CHECKOUT_MODE_KEY = "rzpCheckoutMode";
+
+export function checkoutMode(): CheckoutMode {
+  if (!isInstagramAndroid()) return "redirect";
+  try {
+    const saved = localStorage.getItem(CHECKOUT_MODE_KEY);
+    if (saved === "redirect" || saved === "popup") return saved;
+    const assigned: CheckoutMode = Math.random() < 0.5 ? "redirect" : "popup";
+    localStorage.setItem(CHECKOUT_MODE_KEY, assigned);
+    return assigned;
+  } catch {
+    return "redirect";
+  }
+}
+
+/* ============ FAILED-ATTEMPT MEMORY (Instagram on Android) ============ */
+// Survives the redirect back from Razorpay and page reloads, so the next Pay
+// press can suggest Chrome. Forgotten after two hours or a successful order.
+
+const IG_FAILED_KEY = "igPaymentFailedAt";
+const IG_FAILED_MEMORY_MS = 2 * 60 * 60 * 1000;
+
+export function rememberInstagramPaymentFailure() {
+  if (!isInstagramAndroid()) return;
+  try {
+    localStorage.setItem(IG_FAILED_KEY, String(Date.now()));
+  } catch {
+    // The card on the checkout page still offers Chrome.
+  }
+}
+
+export function hadRecentInstagramPaymentFailure(): boolean {
+  if (!isInstagramAndroid()) return false;
+  try {
+    const at = Number(localStorage.getItem(IG_FAILED_KEY) || 0);
+    return at > 0 && Date.now() - at < IG_FAILED_MEMORY_MS;
+  } catch {
+    return false;
+  }
+}
+
+export function forgetInstagramPaymentFailure() {
+  try {
+    localStorage.removeItem(IG_FAILED_KEY);
+  } catch {
+    // Nothing to do.
+  }
+}
+
 export function isIOS(): boolean {
   return typeof navigator !== "undefined" && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }

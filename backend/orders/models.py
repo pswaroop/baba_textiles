@@ -95,6 +95,11 @@ class Order(models.Model):
     # payment link too.
     opened_on_android = models.BooleanField(default=False)
 
+    # How Razorpay Checkout was opened for this order: "redirect" (whole page
+    # goes to Razorpay) or "popup" (over our page). Instagram-Android customers
+    # are split between the two to find which lets UPI apps open more often.
+    checkout_mode = models.CharField(max_length=10, blank=True, default="")
+
     class Meta:
         ordering = ["-created_at"]
         indexes = [
