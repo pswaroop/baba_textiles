@@ -147,16 +147,19 @@ export function checkoutHandoffUrl(entries: CartHandoffEntry[]): string {
 }
 
 /* ================= RAZORPAY SCRIPT ================= */
-// index.html loads Checkout asynchronously so a slow Razorpay CDN never blocks
-// the page. If it has not arrived (or failed on a flaky mobile connection)
-// by the time the customer pays, load it again here.
+// Loaded only on the checkout page (not site-wide): Checkout starts it as soon
+// as the page opens, and Pay waits for it if it has not arrived yet.
 
 const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 
+let razorpayLoading: Promise<boolean> | null = null;
+
 export function loadRazorpay(timeoutMs = 10000): Promise<boolean> {
   if ((window as any).Razorpay) return Promise.resolve(true);
+  // One script tag at a time: the page preload and Pay can both ask for it.
+  if (razorpayLoading) return razorpayLoading;
 
-  return new Promise((resolve) => {
+  razorpayLoading = new Promise<boolean>((resolve) => {
     const script = document.createElement("script");
     script.src = RAZORPAY_SCRIPT_URL;
     script.async = true;
@@ -169,5 +172,9 @@ export function loadRazorpay(timeoutMs = 10000): Promise<boolean> {
     script.onload = finish;
     script.onerror = finish;
     document.body.appendChild(script);
+  }).then((ok) => {
+    if (!ok) razorpayLoading = null; // let a later attempt retry
+    return ok;
   });
+  return razorpayLoading;
 }

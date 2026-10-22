@@ -112,6 +112,10 @@ const Footer = () => {
               <img
                 src="https://www.staffarc.in/images/Staffarc-logo.png"
                 alt="StaffArc"
+                loading="lazy"
+                decoding="async"
+                width={20}
+                height={20}
                 className="h-5 w-5 object-contain"
               />
               StaffArc

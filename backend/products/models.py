@@ -84,9 +84,11 @@ def compress_image_to_webp(
         return None
 
     # Avoid re-decoding files already converted by this pipeline, unless we
-    # still need a thumbnail out of them (the backfill command relies on this).
+    # still need a thumbnail out of them (the backfill command relies on this)
+    # or the WEBP is bigger than this pipeline allows (uploaded as WEBP).
     already_webp = image_field.name.lower().endswith(".webp")
-    if already_webp and not thumbnail_max_width:
+    oversized = already_webp and image_width(image_field) > max_width
+    if already_webp and not oversized and not thumbnail_max_width:
         return None
 
     try:
@@ -98,7 +100,7 @@ def compress_image_to_webp(
             if thumbnail_max_width
             else None
         )
-        main = None if already_webp else _encode_webp(image, max_width, quality)
+        main = _encode_webp(image, max_width, quality) if (oversized or not already_webp) else None
         image.close()
     except Exception:
         logger.exception(
@@ -113,7 +115,27 @@ def compress_image_to_webp(
     return thumbnail
 
 
-def make_thumbnail_webp(image_field, *, max_width=800, quality=85):
+def image_width(image_field):
+    """Pixel width from the file header, without decoding the image."""
+    try:
+        image_field.seek(0)
+    except Exception:
+        pass
+    try:
+        with Image.open(image_field) as im:
+            return im.width
+    except Exception:
+        return 0
+
+
+# Sizes the storefront actually displays (with room for high-density screens).
+PRODUCT_MAIN_MAX_WIDTH = 1000
+PRODUCT_THUMB_MAX_WIDTH = 600   # cards show ~180-280 CSS px
+CATEGORY_MAX_WIDTH = 450        # circles of up to ~208 CSS px
+HERO_MAX_WIDTH = 640            # tiles of 160x240 CSS px
+
+
+def make_thumbnail_webp(image_field, *, max_width=PRODUCT_THUMB_MAX_WIDTH, quality=78):
     """Build a small WEBP thumbnail from an already-saved image field.
 
     Returns a ContentFile, or None if it can't be built (missing file,
@@ -149,7 +171,7 @@ class Category(models.Model):
         # thumbnail (max ~208px on screen), so 450px covers retina displays
         # with headroom instead of shipping an 800px original every time.
         if self.image:
-            compress_image_to_webp(self.image, max_width=450, quality=78)
+            compress_image_to_webp(self.image, max_width=CATEGORY_MAX_WIDTH, quality=78)
             
         super().save(*args, **kwargs)
 
@@ -264,10 +286,10 @@ class ProductImage(models.Model):
             # written to disk.
             thumb = compress_image_to_webp(
                 self.image,
-                max_width=1000,
+                max_width=PRODUCT_MAIN_MAX_WIDTH,
                 quality=80,
-                thumbnail_max_width=800,
-                thumbnail_quality=85,
+                thumbnail_max_width=PRODUCT_THUMB_MAX_WIDTH,
+                thumbnail_quality=78,
             )
             if thumb is not None:
                 stem = Path(self.image.name).stem
@@ -373,7 +395,7 @@ class HeroImage(models.Model):
         # (raw phone-camera JPEGs up to ~3.6MB) — this was the single
         # biggest contributor to a slow homepage.
         if image_changed and self.image:
-            compress_image_to_webp(self.image, max_width=1000, quality=78)
+            compress_image_to_webp(self.image, max_width=HERO_MAX_WIDTH, quality=78)
 
         super().save(*args, **kwargs)
         cache.delete("hero_images_api_cache")

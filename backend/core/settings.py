@@ -242,6 +242,16 @@ INDIAPOST_DEFAULT_WEIGHT_GRAMS = int(os.environ.get("INDIAPOST_DEFAULT_WEIGHT_GR
 INDIAPOST_DEFAULT_LENGTH_CM = int(os.environ.get("INDIAPOST_DEFAULT_LENGTH_CM", "25"))
 INDIAPOST_DEFAULT_BREADTH_CM = int(os.environ.get("INDIAPOST_DEFAULT_BREADTH_CM", "20"))
 INDIAPOST_DEFAULT_HEIGHT_CM = int(os.environ.get("INDIAPOST_DEFAULT_HEIGHT_CM", "5"))
+# One cache shared by all gunicorn workers and the cron jobs, so clearing it
+# (e.g. when a product is edited) takes effect everywhere at once.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": str(BASE_DIR / ".cache"),
+        "TIMEOUT": 300,
+    }
+}
+
 # App logs (checkout rejections, payment links, Razorpay errors). Gunicorn does
 # not capture stderr, so without this they were lost.
 LOG_DIR = BASE_DIR / "logs"

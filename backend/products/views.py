@@ -173,9 +173,26 @@ class ValidateStockView(APIView):
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+ALL_TAGGED_CACHE_KEY = "all_tagged_products_v1"
+ALL_TAGGED_CACHE_SECONDS = 60
+
+
 @api_view(["GET"])
 def all_products_view(request):
-    """Returns all tagged products in a single request, grouped by tag."""
+    """Returns all tagged products in a single request, grouped by tag.
+
+    Building this takes ~3s (serialising ~900KB), so the result is cached for a
+    minute and dropped whenever a product, size or image changes (see
+    products/signals.py). Stock shown can be up to a minute old; checkout
+    re-checks it.
+    """
+    cached = cache.get(ALL_TAGGED_CACHE_KEY)
+    if cached is not None:
+        response = Response(cached)
+        response["Cache-Control"] = "public, max-age=60, stale-while-revalidate=60"
+        response["Vary"] = "Accept-Encoding"
+        return response
+
     tags = ["latest", "popular", "budget"]
     result = {}
     for tag in tags:
@@ -195,7 +212,8 @@ def all_products_view(request):
         )
         result[tag] = ProductSerializer(qs, many=True, context={"request": request}).data
 
+    cache.set(ALL_TAGGED_CACHE_KEY, result, ALL_TAGGED_CACHE_SECONDS)
     response = Response(result)
-    response["Cache-Control"] = "public, max-age=900, stale-while-revalidate=60"
+    response["Cache-Control"] = "public, max-age=60, stale-while-revalidate=60"
     response["Vary"] = "Accept-Encoding"
     return response

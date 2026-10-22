@@ -3,74 +3,82 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 
 from products.models import (
+    CATEGORY_MAX_WIDTH,
+    HERO_MAX_WIDTH,
+    PRODUCT_MAIN_MAX_WIDTH,
+    PRODUCT_THUMB_MAX_WIDTH,
     Category,
     HeroImage,
     ProductImage,
     compress_image_to_webp,
+    image_width,
     make_thumbnail_webp,
 )
 
 
 class Command(BaseCommand):
     help = (
-        "Backfill: compress any product/category/hero images that are still "
-        "raw originals to WebP, and generate any missing ProductImage thumbnails. "
-        "Safe to re-run — already-compressed images and existing thumbnails are left alone."
+        "Backfill: convert raw images to WebP, shrink any image wider than the "
+        "storefront displays, and (re)build product thumbnails that are missing "
+        "or oversized. Safe to re-run. Original files are left on disk."
     )
 
-    def handle(self, *args, **kwargs):
-        self._compress_product_images()
-        self._backfill_thumbnails()
-        self._compress_categories()
-        self._compress_hero_images()
-        self.stdout.write(self.style.SUCCESS("Image backfill completed."))
+    def add_arguments(self, parser):
+        parser.add_argument("--dry-run", action="store_true", help="Only report what would change.")
 
-    def _compress_product_images(self):
-        images = list(ProductImage.objects.all())
-        self.stdout.write(f"Checking {len(images)} product images...")
-        for img in images:
-            if not img.image or img.image.name.lower().endswith(".webp"):
+    def handle(self, *args, **options):
+        self.dry = options["dry_run"]
+        self.changed = 0
+        self._fix(HeroImage.objects.all(), "hero", HERO_MAX_WIDTH)
+        self._fix(Category.objects.all(), "category", CATEGORY_MAX_WIDTH)
+        self._fix(ProductImage.objects.all(), "product image", PRODUCT_MAIN_MAX_WIDTH)
+        self._thumbnails()
+        verb = "Would change" if self.dry else "Changed"
+        self.stdout.write(self.style.SUCCESS(f"{verb} {self.changed} files."))
+
+    def _needs_work(self, field, max_width):
+        if not field or not field.name:
+            return False
+        try:
+            return not field.name.lower().endswith(".webp") or image_width(field) > max_width
+        except Exception:
+            return False
+
+    def _fix(self, objects, label, max_width):
+        for obj in objects:
+            if not self._needs_work(obj.image, max_width):
+                continue
+            self.changed += 1
+            old = obj.image.name
+            if self.dry:
+                self.stdout.write(f"{label} {obj.pk}: {old} ({image_width(obj.image)}px) -> {max_width}px webp")
                 continue
             try:
-                compress_image_to_webp(img.image, max_width=800, quality=80)
-                img.save(update_fields=None)
-                self.stdout.write(self.style.SUCCESS(f"Compressed {img.image.name}"))
+                compress_image_to_webp(obj.image, max_width=max_width, quality=78 if label != "product image" else 80)
+                # update_fields keeps the model's own save() from reprocessing it.
+                type(obj).objects.filter(pk=obj.pk).update(image=obj.image.name)
+                self.stdout.write(self.style.SUCCESS(f"{label} {obj.pk}: {old} -> {obj.image.name}"))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Failed: {img.pk} - {e}"))
+                self.stdout.write(self.style.ERROR(f"Failed {label} {obj.pk}: {e}"))
+        if hasattr(objects.model, "_meta") and objects.model is HeroImage and not self.dry:
+            from django.core.cache import cache
+            cache.delete("hero_images_api_cache")
 
-    def _backfill_thumbnails(self):
-        missing = ProductImage.objects.filter(image__isnull=False).exclude(image="")
-        missing = [img for img in missing if img.image and not img.thumbnail]
-        self.stdout.write(f"Generating {len(missing)} missing thumbnails...")
-        for img in missing:
-            try:
-                thumb = make_thumbnail_webp(img.image, max_width=400, quality=72)
-                if thumb is None:
-                    continue
-                stem = Path(img.image.name).stem
-                img.thumbnail.save(f"{stem}_thumb.webp", thumb, save=True)
-                self.stdout.write(self.style.SUCCESS(f"Thumbnail for {img.image.name}"))
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Failed thumbnail: {img.pk} - {e}"))
-
-    def _compress_categories(self):
-        cats = [c for c in Category.objects.all() if c.image and not c.image.name.lower().endswith(".webp")]
-        self.stdout.write(f"Compressing {len(cats)} raw category images...")
-        for cat in cats:
-            try:
-                compress_image_to_webp(cat.image, max_width=450, quality=78)
-                cat.save()
-                self.stdout.write(self.style.SUCCESS(f"Compressed {cat.image.name}"))
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Failed: category {cat.pk} - {e}"))
-
-    def _compress_hero_images(self):
-        heroes = [h for h in HeroImage.objects.all() if h.image and not h.image.name.lower().endswith(".webp")]
-        self.stdout.write(f"Compressing {len(heroes)} raw hero images...")
-        for hero in heroes:
-            try:
-                compress_image_to_webp(hero.image, max_width=1000, quality=78)
-                hero.save()
-                self.stdout.write(self.style.SUCCESS(f"Compressed {hero.image.name}"))
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Failed: hero {hero.pk} - {e}"))
+    def _thumbnails(self):
+        for img in ProductImage.objects.all():
+            if not img.image or not img.image.name:
+                continue
+            thumb_ok = img.thumbnail and img.thumbnail.name and image_width(img.thumbnail) <= PRODUCT_THUMB_MAX_WIDTH
+            if thumb_ok:
+                continue
+            self.changed += 1
+            if self.dry:
+                self.stdout.write(f"thumbnail {img.pk}: {'missing' if not img.thumbnail else img.thumbnail.name} -> {PRODUCT_THUMB_MAX_WIDTH}px")
+                continue
+            thumb = make_thumbnail_webp(img.image, max_width=PRODUCT_THUMB_MAX_WIDTH, quality=78)
+            if thumb is None:
+                self.stdout.write(self.style.ERROR(f"Failed thumbnail {img.pk}"))
+                continue
+            stem = Path(img.image.name).stem
+            img.thumbnail.save(f"{stem}_thumb.webp", thumb, save=False)
+            ProductImage.objects.filter(pk=img.pk).update(thumbnail=img.thumbnail.name)

@@ -153,6 +153,12 @@ export default function Checkout() {
   // Set once the server has texted a payment link for a failed attempt.
   const [linkNotice, setLinkNotice] = useState<LinkNotice | null>(null);
 
+  // Razorpay's script is only needed here; start fetching it while the
+  // customer fills in the address so Pay opens instantly.
+  useEffect(() => {
+    loadRazorpay();
+  }, []);
+
   // An attempt failed inside Instagram's browser: offer to carry on
   // in Chrome, where UPI apps open reliably.
   const [offerBrowserSwitch, setOfferBrowserSwitch] = useState(false);

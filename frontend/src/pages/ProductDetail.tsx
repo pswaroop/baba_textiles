@@ -70,8 +70,10 @@ export default function ProductDetail() {
   // any other product is fetched on its own instead of showing "not found".
   const [fetched, setFetched] = useState<{ id: string; product: Product | null } | null>(null);
 
+  // Fetched straight away, not after the (larger, slower) product list has
+  // loaded: a product page opened from a link shows up as soon as it can.
   useEffect(() => {
-    if (isShopLoading || listedProduct || !id) return;
+    if (listedProduct || !id) return;
     let cancelled = false;
     fetchProductById(id).then((result) => {
       if (!cancelled) setFetched({ id, product: result });
@@ -79,7 +81,7 @@ export default function ProductDetail() {
     return () => {
       cancelled = true;
     };
-  }, [id, isShopLoading, listedProduct, fetchProductById]);
+  }, [id, listedProduct, fetchProductById]);
 
   const product =
     listedProduct ?? (fetched && fetched.id === id ? fetched.product ?? undefined : undefined);
@@ -87,7 +89,7 @@ export default function ProductDetail() {
   // On a hard refresh, `products` starts empty and only fills in after the
   // ShopContext fetch resolves. We distinguish "still fetching" from
   // "fetch finished and genuinely not found" to avoid a false "not found" flash.
-  const isProductStillResolving = !product && (isShopLoading || fetched?.id !== id);
+  const isProductStillResolving = !product && fetched?.id !== id;
 
   const hasSizes = product?.has_sizes ?? false;
   const wishlisted = product ? isInWishlist(product.id) : false;

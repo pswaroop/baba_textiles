@@ -725,3 +725,73 @@ class AdminStockSafetyTests(TestCase):
         self.assertEqual(r.status_code, 302, r.content[:3000])
         new = ProductVariant.objects.get(product=self.product, size="XXL")
         self.assertEqual((new.stock, new.reserved_stock), (7, 0))
+
+
+class PerformanceTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.cat = Category.objects.create(name="Sets", slug="sets")
+        self.product = Product.objects.create(name="Set A", code="SA", category=self.cat, description="x", original_price=900, price=800)
+        from products.models import ProductTag
+        self.product.tags.add(ProductTag.objects.create(name="latest"))
+        self.variant = ProductVariant.objects.create(product=self.product, color=ProductColor.objects.create(name="Red", color="#f00"), size="XL", stock=5)
+
+    def test_product_list_is_cached_and_dropped_on_product_edit(self):
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        api = APIClient()
+        self.assertEqual(len(api.get("/api/products/all-tagged/").json()["latest"]), 1)
+        with CaptureQueriesContext(connection) as q:
+            api.get("/api/products/all-tagged/")
+        self.assertEqual(len(q.captured_queries), 0)  # served from cache
+
+        self.product.name = "Set A (new)"; self.product.save()
+        self.assertEqual(api.get("/api/products/all-tagged/").json()["latest"][0]["name"], "Set A (new)")
+
+        self.product.is_active = False; self.product.save()
+        self.assertEqual(api.get("/api/products/all-tagged/").json()["latest"], [])
+
+    def test_checkout_stock_updates_do_not_rebuild_the_list(self):
+        from django.core.cache import cache
+        from products.views import ALL_TAGGED_CACHE_KEY
+        APIClient().get("/api/products/all-tagged/")
+        self.variant.reserved_stock = 1
+        self.variant.save(update_fields=["reserved_stock"])
+        self.assertIsNotNone(cache.get(ALL_TAGGED_CACHE_KEY))
+        self.variant.size = "XXL"; self.variant.save()  # a real edit does
+        self.assertIsNone(cache.get(ALL_TAGGED_CACHE_KEY))
+
+    def test_oversized_webp_is_resized_and_raw_upload_converted(self):
+        from io import BytesIO
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from products.models import HeroImage, CATEGORY_MAX_WIDTH, HERO_MAX_WIDTH
+
+        def upload(name, fmt, size):
+            buf = BytesIO(); Image.new("RGB", size, "red").save(buf, format=fmt)
+            return SimpleUploadedFile(name, buf.getvalue())
+
+        cat = Category.objects.create(name="Nighty", slug="nighty", image=upload("big.webp", "WEBP", (3000, 4500)))
+        with Image.open(cat.image.path) as im:
+            self.assertEqual(im.width, CATEGORY_MAX_WIDTH)
+        hero = HeroImage.objects.create(image=upload("banner.png", "PNG", (1122, 1402)))
+        self.assertTrue(hero.image.name.endswith(".webp"))
+        with Image.open(hero.image.path) as im:
+            self.assertEqual(im.width, HERO_MAX_WIDTH)
+
+    def test_backfill_command_dry_run_then_fix(self):
+        from io import BytesIO, StringIO
+        from PIL import Image
+        from django.core.files.base import ContentFile
+        from products.models import HeroImage
+        buf = BytesIO(); Image.new("RGB", (2268, 4032), "blue").save(buf, format="JPEG")
+        hero = HeroImage(); hero.image.save("old.jpeg", ContentFile(buf.getvalue()), save=False)
+        HeroImage.objects.bulk_create([hero])  # as if uploaded before compression existed
+        out = StringIO(); call_command("compress_images", "--dry-run", stdout=out)
+        self.assertIn("Would change 1 files", out.getvalue())
+        call_command("compress_images", stdout=StringIO())
+        h = HeroImage.objects.get()
+        self.assertTrue(h.image.name.endswith(".webp"))
+        with Image.open(h.image.path) as im:
+            self.assertEqual(im.width, 640)
