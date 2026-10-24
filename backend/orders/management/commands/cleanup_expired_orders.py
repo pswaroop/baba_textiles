@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-import razorpay
+from orders.razorpay_client import make_client
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -21,7 +21,7 @@ from orders.views import (
 from products.models import ProductVariant
 
 
-client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+client = make_client()  # Razorpay with request timeouts
 
 
 class Command(BaseCommand):

@@ -80,26 +80,24 @@ export function isInstagramAndroid(): boolean {
   return isInAppBrowser() && isAndroid();
 }
 
-/* ============ CHECKOUT MODE EXPERIMENT (Instagram on Android) ============ */
-// Razorpay Checkout opened as a redirect (the page moves to Razorpay) or as a
-// popup over our page. Instagram may let UPI apps open from one more than the
-// other; each phone is assigned one at random and keeps it, and every order
-// records which was used (see the checkout_mode_report command).
+/* ============ CHECKOUT MODE ============ */
+// Razorpay Checkout can open as a redirect (the page moves to Razorpay) or as
+// a popup over our page. An A/B test on Instagram-Android (22-24 Oct 2026)
+// found redirect better on every measure: 65% vs 56% of customers paid, and
+// the UPI app failed to open on 26% vs 37% of UPI attempts. So everyone gets
+// redirect. Popup support stays in Checkout in case it is retested; past
+// orders keep the mode they used (Order.checkout_mode, checkout_mode_report).
 
 export type CheckoutMode = "redirect" | "popup";
 const CHECKOUT_MODE_KEY = "rzpCheckoutMode";
 
 export function checkoutMode(): CheckoutMode {
-  if (!isInstagramAndroid()) return "redirect";
   try {
-    const saved = localStorage.getItem(CHECKOUT_MODE_KEY);
-    if (saved === "redirect" || saved === "popup") return saved;
-    const assigned: CheckoutMode = Math.random() < 0.5 ? "redirect" : "popup";
-    localStorage.setItem(CHECKOUT_MODE_KEY, assigned);
-    return assigned;
+    localStorage.removeItem(CHECKOUT_MODE_KEY); // forget the test assignment
   } catch {
-    return "redirect";
+    // Nothing to forget.
   }
+  return "redirect";
 }
 
 /* ============ FAILED-ATTEMPT MEMORY (Instagram on Android) ============ */

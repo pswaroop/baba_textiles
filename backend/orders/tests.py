@@ -920,3 +920,26 @@ class SitemapAndSecurityTests(TestCase):
         self.assertIn("max-age=", r["Strict-Transport-Security"])
         self.assertEqual(r["X-Content-Type-Options"], "nosniff")
         self.assertEqual(self.client.get("/api/products/categories/").status_code, 301)  # plain HTTP redirected
+
+
+class RazorpayTimeoutTests(TestCase):
+    def test_razorpay_calls_have_a_timeout(self):
+        from unittest import mock
+        from orders.razorpay_client import RAZORPAY_TIMEOUT, make_client
+        client = make_client()
+        with mock.patch("requests.Session.request") as req:
+            req.return_value = mock.Mock(status_code=200, json=lambda: {"id": "order_x"})
+            client.order.fetch("order_x")
+        self.assertEqual(req.call_args.kwargs["timeout"], RAZORPAY_TIMEOUT)
+
+    def test_hung_razorpay_fails_fast_and_releases_stock(self):
+        import requests
+        from unittest import mock
+        cat = Category.objects.create(name="S", slug="s")
+        p = Product.objects.create(name="P", code="P1", category=cat, description="x", original_price=150, price=100)
+        v = ProductVariant.objects.create(product=p, color=ProductColor.objects.create(name="R", color="#f00"), size="XL", stock=3)
+        with mock.patch("orders.views.client.order.create", side_effect=requests.exceptions.Timeout("read timed out")):
+            r = APIClient().post("/api/create-order/", {"items": [{"variant": v.id, "quantity": 1}], "phone": "6303570160"}, format="json")
+        self.assertEqual(r.status_code, 502)
+        v.refresh_from_db()
+        self.assertEqual(v.reserved_stock, 0)

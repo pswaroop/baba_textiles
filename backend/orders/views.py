@@ -4,7 +4,7 @@ import re
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-import razorpay
+from orders.razorpay_client import make_client
 from django.conf import settings
 from urllib.parse import urlencode
 
@@ -24,7 +24,7 @@ from products.models import ProductVariant
 
 logger = logging.getLogger(__name__)
 
-client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+client = make_client()  # Razorpay with request timeouts
 
 
 def ensure_payment_captured(razorpay_payment_id, expected_amount_paise=None):
